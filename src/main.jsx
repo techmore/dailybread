@@ -107,6 +107,16 @@ const sceneStations = [
   { id: 'bag', label: 'BAG', position: [4, 0.35, -0.65], size: [0.75, 0.7, 0.95], color: '#aeb7b6', labelPosition: [4, 1.05, -0.65] }
 ];
 
+const stageFocus = {
+  mix: { station: 'mixer', callout: 'Meter ingredients + mix dough' },
+  proof: { station: 'proof', callout: 'Hold fermentation racks' },
+  shape: { station: 'oven', callout: 'Shape, score, build oven loads' },
+  bake: { station: 'oven', callout: 'Steam bake by oven round' },
+  cool: { station: 'cool', callout: 'Accumulate cooling racks' },
+  slice: { station: 'slice', callout: 'Slice, bag, stage delivery' },
+  clean: { station: 'bag', callout: 'Food-safe washdown cycle' }
+};
+
 const scenePathPoints = [
   [-3.45, 0.35, -0.1],
   [-2.05, 0.35, 0.75],
@@ -840,6 +850,29 @@ function ContainerScene({ model, multiplier, schedule }) {
       return sprite;
     };
 
+    const addSmallLabel = (text, x, y, z, accent = '#203734') => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 640;
+      canvas.height = 160;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = 'rgba(255, 250, 240, 0.94)';
+      ctx.roundRect(18, 18, 604, 92, 18);
+      ctx.fill();
+      ctx.strokeStyle = accent;
+      ctx.lineWidth = 7;
+      ctx.stroke();
+      ctx.fillStyle = '#1a2421';
+      ctx.font = '800 36px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(text, 320, 76);
+      const texture = new THREE.CanvasTexture(canvas);
+      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true }));
+      sprite.position.set(x, y, z);
+      sprite.scale.set(1.8, 0.45, 1);
+      scene.add(sprite);
+      return sprite;
+    };
+
     const addDimensionLabel = (text, x, y, z) => {
       const canvas = document.createElement('canvas');
       canvas.width = 512;
@@ -948,6 +981,24 @@ function ContainerScene({ model, multiplier, schedule }) {
       })
     );
     sceneStations.forEach((station) => addLabel(station.label, ...station.labelPosition));
+    const stationFocusMeshes = Object.fromEntries(
+      sceneStations.map((station) => {
+        const [x, y, z] = station.position;
+        const [w, h, d] = station.size;
+        const focus = addBox(x, y + 0.04, z, w + 0.22, h + 0.18, d + 0.22, '#e2b84f', 0.22);
+        focus.visible = false;
+        return [station.id, focus];
+      })
+    );
+    const stationCallouts = Object.fromEntries(
+      Object.entries(stageFocus).map(([stage, focus]) => {
+        const station = sceneStations.find((item) => item.id === focus.station);
+        const [x, y, z] = station.labelPosition;
+        const sprite = addSmallLabel(focus.callout, x, y + 0.55, z, '#9c442e');
+        sprite.visible = false;
+        return [stage, { sprite, baseY: sprite.position.y }];
+      })
+    );
 
     const mixer = stationMeshes.mixer;
     const mixerDrum = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.36, 0.78, 28), new THREE.MeshStandardMaterial({ color: '#f0e0b5', roughness: 0.82 }));
@@ -985,6 +1036,16 @@ function ContainerScene({ model, multiplier, schedule }) {
       new THREE.MeshStandardMaterial({ color: '#8fa765', emissive: '#314200', emissiveIntensity: 0.15 })
     );
     scene.add(tube);
+    const arrowMarkers = [0.14, 0.31, 0.48, 0.65, 0.82].map((pathT) => {
+      const cone = new THREE.Mesh(
+        new THREE.ConeGeometry(0.11, 0.3, 24),
+        new THREE.MeshStandardMaterial({ color: '#8fa765', emissive: '#314200', emissiveIntensity: 0.08, roughness: 0.55 })
+      );
+      cone.rotation.x = Math.PI / 2;
+      cone.position.copy(curve.getPointAt(pathT));
+      scene.add(cone);
+      return { cone, pathT };
+    });
 
     const createTray = (index) => {
       const trayGroup = new THREE.Group();
@@ -1024,6 +1085,8 @@ function ContainerScene({ model, multiplier, schedule }) {
       scene.add(group);
       return { group, lower, upper };
     });
+    addSmallLabel('ARM A: dough handling', -0.95, 1.55, 0.24, '#d9a73a');
+    addSmallLabel('ARM B: oven + packout', 1.8, 1.55, 0.24, '#d9a73a');
 
     let raf;
     let lastPhaseUiUpdate = 0;
@@ -1052,6 +1115,14 @@ function ContainerScene({ model, multiplier, schedule }) {
       mixer.rotation.y = Math.sin(elapsed * 5) * 0.03;
       mixerDrum.rotation.z = elapsed * 2.8;
       scene.rotation.y = Math.sin(elapsed * 0.18) * 0.12;
+      arrowMarkers.forEach(({ cone, pathT }) => {
+        const here = curve.getPointAt(pathT);
+        const next = curve.getPointAt(Math.min(0.99, pathT + 0.015));
+        cone.position.copy(here);
+        cone.position.y += Math.sin(elapsed * 3 + pathT * 10) * 0.02;
+        cone.lookAt(next);
+        cone.rotateX(Math.PI / 2);
+      });
       ingredientSources.forEach(({ start, end, badge }, index) => {
         const feedT = (t * 1.6 + index * 0.19) % 1;
         const eased = feedT < 0.78 ? feedT / 0.78 : 0;
@@ -1060,6 +1131,24 @@ function ContainerScene({ model, multiplier, schedule }) {
         badge.material.opacity = feedT < 0.82 ? 1 : 0.25;
       });
       const nextStage = getStageIndexForPhase(schedule, t * 100);
+      const activeFocus = stageFocus[schedule.stages[nextStage]?.id] || stageFocus.mix;
+      Object.entries(stationFocusMeshes).forEach(([stationId, focusMesh]) => {
+        const active = stationId === activeFocus.station;
+        focusMesh.visible = active;
+        focusMesh.scale.setScalar(active ? 1 + Math.sin(elapsed * 5) * 0.035 : 1);
+      });
+      Object.entries(stationMeshes).forEach(([stationId, mesh]) => {
+        const active = stationId === activeFocus.station;
+        mesh.material.emissive.set(active ? '#332600' : '#000000');
+        mesh.material.emissiveIntensity = active ? 0.28 : 0;
+      });
+      Object.entries(stationCallouts).forEach(([stage, callout]) => {
+        const { sprite, baseY } = callout;
+        sprite.visible = stage === schedule.stages[nextStage]?.id;
+        if (sprite.visible) {
+          sprite.position.y = baseY + Math.sin(elapsed * 3) * 0.02;
+        }
+      });
       const poseSet = armPoses[schedule.stages[nextStage]?.id] || armPoses.mix;
       armGroups.forEach((arm, index) => {
         const pose = poseSet[index] || poseSet[0];
