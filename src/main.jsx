@@ -68,9 +68,128 @@ const ingredientFeed = [
   { label: 'Salt', short: 'NaCl', color: '#f7f7ef' }
 ];
 
+const pages = ['overview', 'model', 'automation'];
+const assumptionStorageKey = 'dailybreadAssumptions';
+
+const assumptionMinimums = {
+  electricityRate: 0,
+  laborRate: 0,
+  schoolSlicedPrice: 0,
+  schoolLoafPrice: 0,
+  retailSlicedPrice: 0,
+  retailLoafPrice: 0,
+  slicedBagCost: 0,
+  artisanBagCost: 0,
+  ovenCapacity: 1,
+  ovenKwhPerBatch: 0,
+  utilityKwhPerScale: 0,
+  dailyOverheadPerScale: 0,
+  cleaningBaseL: 0,
+  cleaningPerScaleL: 0,
+  cleaningCycleL: 0,
+  robotCleanHours: 0.25,
+  deckOvenCost: 0,
+  robotArmCost: 0,
+  endEffectorsCost: 0,
+  containerBuildoutCost: 0,
+  mixerPackageCost: 0,
+  controlsInstallCost: 0
+};
+
+const sceneStations = [
+  { id: 'mixer', label: 'MIX', position: [-3.45, 0.55, -0.7], size: [1.05, 1.1, 1.45], color: '#243235', labelPosition: [-3.45, 1.62, -0.72] },
+  { id: 'proof', label: 'PROOF', position: [-2.05, 0.42, 0.85], size: [1.2, 0.75, 0.9], color: '#c99f4f', labelPosition: [-2.05, 1.25, 0.9] },
+  { id: 'oven', label: 'OVEN', position: [-0.45, 0.38, -0.85], size: [1.35, 0.75, 0.75], color: '#b45435', labelPosition: [-0.45, 1.22, -0.9] },
+  { id: 'cool', label: 'COOL', position: [1.35, 0.65, -0.85], size: [1.25, 1.3, 0.7], color: '#526169', labelPosition: [1.35, 1.55, -0.9] },
+  { id: 'slice', label: 'SLICE', position: [3, 0.42, 0.8], size: [1.05, 0.85, 1.25], color: '#6f805d', labelPosition: [3, 1.25, 0.85] },
+  { id: 'bag', label: 'BAG', position: [4, 0.35, -0.65], size: [0.75, 0.7, 0.95], color: '#aeb7b6', labelPosition: [4, 1.05, -0.65] }
+];
+
+const scenePathPoints = [
+  [-3.45, 0.35, -0.1],
+  [-2.05, 0.35, 0.75],
+  [-0.45, 0.35, -0.55],
+  [1.35, 0.35, -0.55],
+  [3, 0.35, 0.65],
+  [4, 0.35, -0.45]
+];
+
+const robotArmPositions = [-0.95, 1.8];
+
 const formatMoney = (n) => n.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
 const formatSmallMoney = (n) => n.toLocaleString(undefined, { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const format1 = (n) => n.toLocaleString(undefined, { maximumFractionDigits: 1 });
+const formatUnitMoney = (n) => (n > 0 && n < 1 ? formatSmallMoney(n) : formatMoney(n));
+
+function clampNumber(value, fallback, min = 0, max = Number.POSITIVE_INFINITY) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    return fallback;
+  }
+  return Math.min(max, Math.max(min, number));
+}
+
+function clampInteger(value, fallback, min, max) {
+  return Math.round(clampNumber(value, fallback, min, max));
+}
+
+function sanitizeAssumptions(input = {}) {
+  return Object.fromEntries(
+    Object.entries(defaultAssumptions).map(([key, fallback]) => [
+      key,
+      clampNumber(input[key], fallback, assumptionMinimums[key] ?? 0)
+    ])
+  );
+}
+
+function readSavedAssumptions() {
+  if (typeof window === 'undefined') {
+    return {};
+  }
+  try {
+    return JSON.parse(window.localStorage.getItem(assumptionStorageKey)) || {};
+  } catch {
+    return {};
+  }
+}
+
+function readInitialState() {
+  if (typeof window === 'undefined') {
+    return {
+      page: 'overview',
+      loaves: 50,
+      multiplier: 1,
+      school: true,
+      sliced: true,
+      assumptions: defaultAssumptions
+    };
+  }
+
+  const params = new URLSearchParams(window.location.search);
+  const page = pages.includes(params.get('page')) ? params.get('page') : 'overview';
+  return {
+    page,
+    loaves: clampInteger(params.get('loaves'), 50, 10, 10000),
+    multiplier: clampInteger(params.get('scale'), 1, 1, 100),
+    school: params.get('school') === null ? true : params.get('school') !== '0',
+    sliced: params.get('sliced') === null ? true : params.get('sliced') !== '0',
+    assumptions: sanitizeAssumptions({ ...defaultAssumptions, ...readSavedAssumptions() })
+  };
+}
+
+function persistScenario({ page, loaves, multiplier, school, sliced }) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  const params = new URLSearchParams();
+  params.set('page', page);
+  params.set('loaves', String(loaves));
+  params.set('scale', String(multiplier));
+  params.set('school', school ? '1' : '0');
+  params.set('sliced', sliced ? '1' : '0');
+  const nextUrl = `${window.location.pathname}?${params.toString()}${window.location.hash}`;
+  window.history.replaceState({}, '', nextUrl);
+}
 
 function getEquipmentUnits(multiplier) {
   return Math.max(1, Math.ceil(multiplier / 3));
@@ -91,9 +210,12 @@ function getEquipmentRows(multiplier, assumptions) {
 }
 
 function computeModel({ loaves, multiplier, school, sliced, assumptions }) {
-  const targetLoaves = loaves * multiplier;
+  const safeAssumptions = sanitizeAssumptions(assumptions);
+  const safeLoaves = clampInteger(loaves, 50, 1, 10000);
+  const safeMultiplier = clampInteger(multiplier, 1, 1, 100);
+  const targetLoaves = safeLoaves * safeMultiplier;
   const recipe = sliced ? recipes.sliced : recipes.artisan;
-  const batches = Math.ceil(targetLoaves / assumptions.ovenCapacity);
+  const batches = Math.ceil(targetLoaves / safeAssumptions.ovenCapacity);
   const bakeHours = (batches * recipe.bakeMin + 14 * batches) / 60;
   const flourKg = (recipe.flourG * targetLoaves) / 1000;
   const waterL = (recipe.waterG * targetLoaves) / 1000;
@@ -101,20 +223,20 @@ function computeModel({ loaves, multiplier, school, sliced, assumptions }) {
   const saltKg = (recipe.saltG * targetLoaves) / 1000;
   const flourCost = recipe.flourG * targetLoaves * flourCostPerG;
   const saltCost = recipe.saltG * targetLoaves * saltCostPerG;
-  const electricityKwh = batches * assumptions.ovenKwhPerBatch + assumptions.utilityKwhPerScale * multiplier;
-  const electricityCost = electricityKwh * assumptions.electricityRate;
-  const bagCost = sliced ? assumptions.slicedBagCost : assumptions.artisanBagCost;
+  const electricityKwh = batches * safeAssumptions.ovenKwhPerBatch + safeAssumptions.utilityKwhPerScale * safeMultiplier;
+  const electricityCost = electricityKwh * safeAssumptions.electricityRate;
+  const bagCost = sliced ? safeAssumptions.slicedBagCost : safeAssumptions.artisanBagCost;
   const packagingCost = targetLoaves * bagCost;
-  const cleaningWater = assumptions.cleaningBaseL + multiplier * assumptions.cleaningPerScaleL + Math.ceil(bakeHours / assumptions.robotCleanHours) * assumptions.cleaningCycleL;
-  const laborHours = school ? 1.8 + multiplier * 0.5 : 2.4 + multiplier * 0.7;
-  const laborCost = laborHours * assumptions.laborRate;
-  const dailyCost = flourCost + saltCost + electricityCost + packagingCost + laborCost + assumptions.dailyOverheadPerScale * multiplier;
+  const cleaningWater = safeAssumptions.cleaningBaseL + safeMultiplier * safeAssumptions.cleaningPerScaleL + Math.ceil(bakeHours / safeAssumptions.robotCleanHours) * safeAssumptions.cleaningCycleL;
+  const laborHours = school ? 1.8 + safeMultiplier * 0.5 : 2.4 + safeMultiplier * 0.7;
+  const laborCost = laborHours * safeAssumptions.laborRate;
+  const dailyCost = flourCost + saltCost + electricityCost + packagingCost + laborCost + safeAssumptions.dailyOverheadPerScale * safeMultiplier;
   const unitCost = dailyCost / targetLoaves;
-  const price = school ? (sliced ? assumptions.schoolSlicedPrice : assumptions.schoolLoafPrice) : (sliced ? assumptions.retailSlicedPrice : assumptions.retailLoafPrice);
+  const price = school ? (sliced ? safeAssumptions.schoolSlicedPrice : safeAssumptions.schoolLoafPrice) : (sliced ? safeAssumptions.retailSlicedPrice : safeAssumptions.retailLoafPrice);
   const revenue = price * targetLoaves * (school ? 5 : 1);
   const weeklyCost = dailyCost * (school ? 5 : 1);
   const gross = revenue - weeklyCost;
-  const ovenUtilization = Math.min(100, (targetLoaves / (batches * assumptions.ovenCapacity)) * 100);
+  const ovenUtilization = Math.min(100, (targetLoaves / (batches * safeAssumptions.ovenCapacity)) * 100);
 
   return {
     targetLoaves,
@@ -144,13 +266,27 @@ function computeModel({ loaves, multiplier, school, sliced, assumptions }) {
 }
 
 function App() {
-  const [page, setPage] = useState('overview');
-  const [loaves, setLoaves] = useState(50);
-  const [multiplier, setMultiplier] = useState(1);
-  const [school, setSchool] = useState(true);
-  const [sliced, setSliced] = useState(true);
-  const [assumptions, setAssumptions] = useState(defaultAssumptions);
-  const model = useMemo(() => computeModel({ loaves, multiplier, school, sliced, assumptions }), [loaves, multiplier, school, sliced, assumptions]);
+  const initialState = useMemo(() => readInitialState(), []);
+  const [page, setPage] = useState(initialState.page);
+  const [loaves, setLoaves] = useState(initialState.loaves);
+  const [multiplier, setMultiplier] = useState(initialState.multiplier);
+  const [school, setSchool] = useState(initialState.school);
+  const [sliced, setSliced] = useState(initialState.sliced);
+  const [assumptions, setAssumptions] = useState(initialState.assumptions);
+  const safeAssumptions = useMemo(() => sanitizeAssumptions(assumptions), [assumptions]);
+  const model = useMemo(() => computeModel({ loaves, multiplier, school, sliced, assumptions: safeAssumptions }), [loaves, multiplier, school, sliced, safeAssumptions]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(assumptionStorageKey, JSON.stringify(safeAssumptions));
+    } catch {
+      // Private browsing or locked-down demo devices can block storage.
+    }
+  }, [safeAssumptions]);
+
+  useEffect(() => {
+    persistScenario({ page, loaves, multiplier, school, sliced });
+  }, [page, loaves, multiplier, school, sliced]);
 
   return (
     <main>
@@ -167,11 +303,11 @@ function App() {
           setSchool={setSchool}
           sliced={sliced}
           setSliced={setSliced}
-          assumptions={assumptions}
+          assumptions={safeAssumptions}
           setAssumptions={setAssumptions}
         />
       )}
-      {page === 'automation' && <Automation model={model} multiplier={multiplier} setMultiplier={setMultiplier} assumptions={assumptions} />}
+      {page === 'automation' && <Automation model={model} multiplier={multiplier} setMultiplier={setMultiplier} assumptions={safeAssumptions} />}
       <Footer />
     </main>
   );
@@ -386,26 +522,26 @@ function ReferenceInputs({ assumptions }) {
 }
 
 function AssumptionEditor({ assumptions, setAssumptions }) {
-  const update = (key, value) => setAssumptions((current) => ({ ...current, [key]: Number(value) }));
+  const update = (key, value) => setAssumptions((current) => sanitizeAssumptions({ ...current, [key]: value }));
   const fields = [
-    ['electricityRate', 'Electricity $/kWh', 0.01],
-    ['laborRate', 'Labor $/hr', 1],
-    ['schoolSlicedPrice', 'School sliced price', 0.05],
-    ['retailSlicedPrice', 'Retail sliced price', 0.05],
-    ['slicedBagCost', 'Sliced bag cost', 0.01],
-    ['ovenCapacity', 'Oven loaves/batch', 1],
-    ['ovenKwhPerBatch', 'Oven kWh/batch', 0.1],
-    ['robotCleanHours', 'Clean cycle hours', 0.5],
-    ['deckOvenCost', 'Atlas oven cost', 100],
-    ['robotArmCost', 'Robot arm cost', 25],
-    ['containerBuildoutCost', '20 ft buildout cost', 500],
-    ['controlsInstallCost', 'Controls/install cost', 500]
+    ['electricityRate', 'Electricity $/kWh', 0.01, 0],
+    ['laborRate', 'Labor $/hr', 1, 0],
+    ['schoolSlicedPrice', 'School sliced price', 0.05, 0],
+    ['retailSlicedPrice', 'Retail sliced price', 0.05, 0],
+    ['slicedBagCost', 'Sliced bag cost', 0.01, 0],
+    ['ovenCapacity', 'Oven loaves/batch', 1, 1],
+    ['ovenKwhPerBatch', 'Oven kWh/batch', 0.1, 0],
+    ['robotCleanHours', 'Clean cycle hours', 0.5, 0.25],
+    ['deckOvenCost', 'Atlas oven cost', 100, 0],
+    ['robotArmCost', 'Robot arm cost', 25, 0],
+    ['containerBuildoutCost', '20 ft buildout cost', 500, 0],
+    ['controlsInstallCost', 'Controls/install cost', 500, 0]
   ];
 
   return (
     <div className="assumptionGrid">
-      {fields.map(([key, label, step]) => (
-        <NumberInput key={key} label={label} value={assumptions[key]} step={step} onChange={(value) => update(key, value)} />
+      {fields.map(([key, label, step, min]) => (
+        <NumberInput key={key} label={label} value={assumptions[key]} step={step} min={min} onChange={(value) => update(key, value)} />
       ))}
     </div>
   );
@@ -490,6 +626,7 @@ function ContainerScene({ multiplier }) {
   const mount = useRef(null);
   const [playing, setPlaying] = useState(true);
   const [stageIndex, setStageIndex] = useState(0);
+  const [sceneError, setSceneError] = useState(false);
   const playingRef = useRef(playing);
   const stageRef = useRef(0);
 
@@ -506,7 +643,22 @@ function ContainerScene({ multiplier }) {
     camera.position.set(6.8, 5.35, 8.05);
     camera.lookAt(cameraTarget);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    const rendererCanvas = document.createElement('canvas');
+    const contextOptions = { antialias: true };
+    const webglContext = rendererCanvas.getContext('webgl2', contextOptions) || rendererCanvas.getContext('webgl', contextOptions);
+    if (!webglContext) {
+      setSceneError(true);
+      return undefined;
+    }
+
+    let renderer;
+    try {
+      renderer = new THREE.WebGLRenderer({ canvas: rendererCanvas, context: webglContext, antialias: true });
+      setSceneError(false);
+    } catch {
+      setSceneError(true);
+      return undefined;
+    }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(el.clientWidth, el.clientHeight);
     el.appendChild(renderer.domElement);
@@ -636,27 +788,25 @@ function ContainerScene({ multiplier }) {
       'x'
     );
 
-    const mixer = addBox(-3.45, 0.55, -0.7, 1.05, 1.1, 1.45, '#243235');
+    const stationMeshes = Object.fromEntries(
+      sceneStations.map((station) => {
+        const [x, y, z] = station.position;
+        const [w, h, d] = station.size;
+        return [station.id, addBox(x, y, z, w, h, d, station.color)];
+      })
+    );
+    sceneStations.forEach((station) => addLabel(station.label, ...station.labelPosition));
+
+    const mixer = stationMeshes.mixer;
     const mixerDrum = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.36, 0.78, 28), new THREE.MeshStandardMaterial({ color: '#f0e0b5', roughness: 0.82 }));
     mixerDrum.rotation.x = Math.PI / 2;
     mixerDrum.position.set(-3.45, 0.68, -0.7);
     scene.add(mixerDrum);
-    addBox(-2.05, 0.42, 0.85, 1.2, 0.75, 0.9, '#c99f4f');
-    addBox(-0.45, 0.38, -0.85, 1.35, 0.75, 0.75, '#b45435');
-    addBox(1.35, 0.65, -0.85, 1.25, 1.3, 0.7, '#526169');
-    addBox(3.0, 0.42, 0.8, 1.05, 0.85, 1.25, '#6f805d');
-    addBox(4.0, 0.35, -0.65, 0.75, 0.7, 0.95, '#aeb7b6');
 
     for (let i = 0; i < Math.min(7, multiplier + 2); i += 1) {
       addBox(-3.6 + i * 1.15, 0.22, 1.48, 0.48, 0.28, 0.58, '#caa15a');
     }
 
-    addLabel('MIX', -3.45, 1.62, -0.72);
-    addLabel('PROOF', -2.05, 1.25, 0.9);
-    addLabel('OVEN', -0.45, 1.22, -0.9);
-    addLabel('COOL', 1.35, 1.55, -0.9);
-    addLabel('SLICE', 3.0, 1.25, 0.85);
-    addLabel('BAG', 4.0, 1.05, -0.65);
     addLabel('INGREDIENT FEED', -4.75, 1.2, 0.9);
 
     const ingredientSources = ingredientFeed.map((item, index) => ({
@@ -666,14 +816,7 @@ function ContainerScene({ multiplier }) {
       badge: addIngredientBadge(item, -5.05, 0.72 + index * 0.03, -1.35 + index * 0.58)
     }));
 
-    const pathPoints = [
-      new THREE.Vector3(-3.45, 0.35, -0.1),
-      new THREE.Vector3(-2.05, 0.35, 0.75),
-      new THREE.Vector3(-0.45, 0.35, -0.55),
-      new THREE.Vector3(1.35, 0.35, -0.55),
-      new THREE.Vector3(3.0, 0.35, 0.65),
-      new THREE.Vector3(4.0, 0.35, -0.45)
-    ];
+    const pathPoints = scenePathPoints.map((point) => new THREE.Vector3(...point));
     const curve = new THREE.CatmullRomCurve3(pathPoints);
     const tube = new THREE.Mesh(
       new THREE.TubeGeometry(curve, 80, 0.025, 8),
@@ -698,7 +841,7 @@ function ContainerScene({ multiplier }) {
     const pulse = new THREE.Mesh(new THREE.SphereGeometry(0.08, 20, 20), new THREE.MeshStandardMaterial({ color: '#e2b84f', emissive: '#c88e17', emissiveIntensity: 0.7 }));
     scene.add(pulse);
 
-    const armGroups = [-0.95, 1.8].map((x) => {
+    const armGroups = robotArmPositions.map((x) => {
       const group = new THREE.Group();
       group.position.set(x, 0.12, 0.05);
       const mat = new THREE.MeshStandardMaterial({ color: '#e0ad3f', metalness: 0.25, roughness: 0.42 });
@@ -717,9 +860,9 @@ function ContainerScene({ multiplier }) {
     });
 
     let raf;
-    const clock = new THREE.Clock();
+    const startedAt = performance.now();
     const animate = () => {
-      const elapsed = clock.getElapsedTime();
+      const elapsed = (performance.now() - startedAt) / 1000;
       if (playingRef.current) {
         const t = (elapsed * 0.08) % 1;
         const pos = curve.getPointAt(t);
@@ -762,13 +905,22 @@ function ContainerScene({ multiplier }) {
       cancelAnimationFrame(raf);
       window.removeEventListener('resize', resize);
       renderer.dispose();
-      el.innerHTML = '';
+      if (renderer.domElement.parentNode === el) {
+        el.removeChild(renderer.domElement);
+      }
     };
   }, [multiplier]);
 
   return (
     <div>
-      <div className="scene" ref={mount} />
+      <div className={`scene ${sceneError ? 'sceneFallback' : ''}`} ref={mount}>
+        {sceneError && (
+          <div>
+            <strong>3D renderer unavailable</strong>
+            <span>The workflow model still runs below; open this page in a browser with WebGL enabled to view the animated container.</span>
+          </div>
+        )}
+      </div>
       <div className="sceneControls">
         <button onClick={() => setPlaying((current) => !current)}>{playing ? <Pause size={16} /> : <Play size={16} />}</button>
         <div>
@@ -845,7 +997,7 @@ function PurchaseTable({ title, rows }) {
             <tr key={item}>
               <th>{item}</th>
               <td>{qty}</td>
-              <td>{formatMoney(unit)}</td>
+              <td>{formatUnitMoney(unit)}</td>
               <td>{formatMoney(qty * unit)}</td>
               <td>{note}</td>
             </tr>
@@ -901,11 +1053,11 @@ function Control({ label, value, min, max, onChange }) {
   );
 }
 
-function NumberInput({ label, value, step, onChange }) {
+function NumberInput({ label, value, step, min, onChange }) {
   return (
     <label className="numberInput">
       <span>{label}</span>
-      <input type="number" min="0" step={step} value={value} onChange={(e) => onChange(e.target.value)} />
+      <input type="number" min={min} step={step} value={value} onChange={(e) => onChange(e.target.value)} />
     </label>
   );
 }

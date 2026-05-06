@@ -520,6 +520,32 @@ td:last-child {
   min-height: 620px;
 }
 
+.sceneFallback {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+  padding: 24px;
+}
+
+.sceneFallback div {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  max-width: 520px;
+  padding: 18px;
+  text-align: center;
+}
+
+.sceneFallback strong,
+.sceneFallback span {
+  display: block;
+}
+
+.sceneFallback span {
+  color: var(--ink-muted);
+  margin-top: 6px;
+}
+
 .sceneControls {
   align-items: center;
   background: var(--evergreen);
