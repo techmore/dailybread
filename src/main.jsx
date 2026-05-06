@@ -501,9 +501,10 @@ function ContainerScene({ multiplier }) {
     const el = mount.current;
     const scene = new THREE.Scene();
     scene.background = new THREE.Color('#f7f2e8');
-    const camera = new THREE.PerspectiveCamera(38, el.clientWidth / el.clientHeight, 0.1, 100);
-    camera.position.set(9.8, 7.5, 11.5);
-    camera.lookAt(0, 0, 0);
+    const camera = new THREE.PerspectiveCamera(30, el.clientWidth / el.clientHeight, 0.1, 100);
+    const cameraTarget = new THREE.Vector3(0, 0.55, 0);
+    camera.position.set(6.8, 5.35, 8.05);
+    camera.lookAt(cameraTarget);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -543,6 +544,45 @@ function ContainerScene({ multiplier }) {
       return sprite;
     };
 
+    const addDimensionLabel = (text, x, y, z) => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 512;
+      canvas.height = 128;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = 'rgba(255, 250, 240, 0.94)';
+      ctx.roundRect(18, 18, 476, 78, 18);
+      ctx.fill();
+      ctx.strokeStyle = '#9c442e';
+      ctx.lineWidth = 6;
+      ctx.stroke();
+      ctx.fillStyle = '#1a2421';
+      ctx.font = '800 38px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(text, 256, 70);
+      const texture = new THREE.CanvasTexture(canvas);
+      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true }));
+      sprite.position.set(x, y, z);
+      sprite.scale.set(1.55, 0.38, 1);
+      scene.add(sprite);
+      return sprite;
+    };
+
+    const addDimensionLine = (start, end, label, labelPosition, tickAxis = 'y') => {
+      const material = new THREE.LineBasicMaterial({ color: '#9c442e', linewidth: 2 });
+      const geometry = new THREE.BufferGeometry().setFromPoints([start, end]);
+      scene.add(new THREE.Line(geometry, material));
+
+      const tickSize = 0.22;
+      const tickBox = (point) => {
+        const dimensions = tickAxis === 'x' ? [tickSize, 0.04, 0.04] : tickAxis === 'z' ? [0.04, 0.04, tickSize] : [0.04, tickSize, 0.04];
+        addBox(point.x, point.y, point.z, dimensions[0], dimensions[1], dimensions[2], '#9c442e');
+      };
+
+      tickBox(start);
+      tickBox(end);
+      addDimensionLabel(label, labelPosition.x, labelPosition.y, labelPosition.z);
+    };
+
     const addIngredientBadge = (item, x, y, z) => {
       const canvas = document.createElement('canvas');
       canvas.width = 256;
@@ -574,6 +614,27 @@ function ContainerScene({ multiplier }) {
     addBox(0, 1.05, -1.92, floorW, 2.35, 0.05, '#d8c89f', 0.28);
     addBox(-floorW / 2, 1.05, 0, 0.05, 2.35, 3.6, '#d8c89f', 0.22);
     addBox(floorW / 2, 1.05, 0, 0.05, 2.35, 3.6, '#d8c89f', 0.22);
+    addDimensionLine(
+      new THREE.Vector3(-floorW / 2, 0.05, 2.08),
+      new THREE.Vector3(floorW / 2, 0.05, 2.08),
+      multiplier > 5 ? '40 ft length' : '20 ft length',
+      new THREE.Vector3(0, 0.34, 2.28),
+      'z'
+    );
+    addDimensionLine(
+      new THREE.Vector3(-floorW / 2 + 0.75, 0.06, -1.8),
+      new THREE.Vector3(-floorW / 2 + 0.75, 0.06, 1.8),
+      '8 ft width',
+      new THREE.Vector3(-floorW / 2 + 1.15, 0.42, 0.25),
+      'x'
+    );
+    addDimensionLine(
+      new THREE.Vector3(-floorW / 2 - 0.32, -0.02, -1.82),
+      new THREE.Vector3(-floorW / 2 - 0.32, 2.28, -1.82),
+      '8.5 ft height',
+      new THREE.Vector3(-floorW / 2 - 0.68, 1.24, -1.82),
+      'x'
+    );
 
     const mixer = addBox(-3.45, 0.55, -0.7, 1.05, 1.1, 1.45, '#243235');
     const mixerDrum = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.36, 0.78, 28), new THREE.MeshStandardMaterial({ color: '#f0e0b5', roughness: 0.82 }));
@@ -694,6 +755,7 @@ function ContainerScene({ multiplier }) {
       renderer.setSize(el.clientWidth, el.clientHeight);
       camera.aspect = el.clientWidth / el.clientHeight;
       camera.updateProjectionMatrix();
+      camera.lookAt(cameraTarget);
     };
     window.addEventListener('resize', resize);
     return () => {
