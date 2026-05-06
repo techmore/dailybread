@@ -351,10 +351,10 @@ function getHomeTelemetry(model, schedule, phase, stageIndex) {
 }
 
 function getHomeInsights(model, schedule) {
-  const bakeStage = schedule.stages.find((stage) => stage.id === 'bake');
+  const coolStage = schedule.stages.find((stage) => stage.id === 'cool');
   const cleanStage = schedule.stages.find((stage) => stage.id === 'clean');
   return [
-    ['Ready window', bakeStage.endLabel, `Cooling finishes at ${cleanStage.startLabel}; cleanup wraps at ${cleanStage.endLabel}.`],
+    ['Ready window', coolStage.endLabel, `Cooling finishes at ${cleanStage.startLabel}; cleanup wraps at ${cleanStage.endLabel}.`],
     ['Weekly output', `${model.weeklyLoaves} loaves`, `${model.bakesPerWeek} bake day${model.bakesPerWeek === 1 ? '' : 's'} per week at ${model.loavesPerBake} loaf${model.loavesPerBake === 1 ? '' : 's'} per day.`],
     ['Counter space', '~5 ft wide', 'Modeled as a countertop cell with ingredient hoppers, jar station, proof drawer, oven, and rinse dock.'],
     ['Main constraint', 'Starter time', 'Most of the schedule is passive fermentation; the robotic work is short but precisely timed.'],
@@ -2064,7 +2064,7 @@ function PurchaseTable({ title, rows }) {
               <th>{item}</th>
               <td>{qty}</td>
               <td>{formatUnitMoney(unit)}</td>
-              <td>{formatMoney(qty * unit)}</td>
+              <td>{formatUnitMoney(qty * unit)}</td>
               <td>{note}</td>
             </tr>
           ))}
@@ -2072,7 +2072,7 @@ function PurchaseTable({ title, rows }) {
             <th>Total</th>
             <td></td>
             <td></td>
-            <td>{formatMoney(total)}</td>
+            <td>{formatUnitMoney(total)}</td>
             <td></td>
           </tr>
         </tbody>
