@@ -512,8 +512,11 @@ td:last-child {
   background: var(--bg);
   border: 1px solid var(--line);
   border-radius: 6px;
+  max-width: 100%;
   min-height: 390px;
+  min-width: 0;
   overflow: hidden;
+  width: 100%;
 }
 
 .workflowShowcase .scene {
@@ -861,6 +864,10 @@ footer {
   .phaseScrubber {
     grid-column: 1 / -1;
   }
+
+  .workflowShowcase .scene {
+    aspect-ratio: auto;
+  }
 }
 
 @media (max-width: 560px) {
@@ -887,6 +894,7 @@ footer {
   }
 
   .workflowShowcase .scene {
+    aspect-ratio: auto;
     min-height: 360px;
   }
 

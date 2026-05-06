@@ -1222,9 +1222,12 @@ function CookieScene({ model }) {
     const target = new THREE.Vector3(0.25, 0.45, 0);
     const positionCamera = () => {
       const aspect = el.clientWidth / Math.max(1, el.clientHeight);
-      const z = aspect < 1 ? 7.4 : 5.8;
-      camera.position.set(3.8, 3.05, z);
-      camera.lookAt(target);
+      const compact = aspect < 1;
+      const z = compact ? 12.4 : 5.8;
+      const y = compact ? 3.85 : 3.05;
+      const x = compact ? 2.55 : 3.8;
+      camera.position.set(x, y, z);
+      camera.lookAt(compact ? new THREE.Vector3(0.35, 0.45, 0) : target);
     };
     positionCamera();
 
@@ -1572,10 +1575,12 @@ function HomeBreadScene({ model, schedule }) {
     const cameraTarget = new THREE.Vector3(0.12, 0.62, 0);
     const positionCamera = () => {
       const aspect = el.clientWidth / Math.max(1, el.clientHeight);
-      const z = aspect < 0.75 ? 12.4 : aspect < 1 ? 10.4 : aspect < 1.35 ? 7.8 : 6.9;
-      const y = aspect < 0.75 ? 3.75 : 3.3;
+      const compact = aspect < 1;
+      scene.position.x = compact ? 0.08 : -0.36;
+      const z = aspect < 0.75 ? 16.2 : aspect < 1 ? 12.4 : aspect < 1.35 ? 7.8 : 6.9;
+      const y = aspect < 0.75 ? 4.35 : 3.45;
       camera.position.set(0.34, y, z);
-      camera.lookAt(cameraTarget);
+      camera.lookAt(compact ? new THREE.Vector3(-0.04, 0.62, 0) : cameraTarget);
     };
     positionCamera();
 
@@ -2562,11 +2567,12 @@ function ContainerScene({ model, multiplier, schedule }) {
     const cameraTarget = new THREE.Vector3(0, 0.72, 0);
     const positionCamera = () => {
       const aspect = el.clientWidth / Math.max(1, el.clientHeight);
-      const z = aspect < 0.75 ? 20.5 : aspect < 1 ? 16.8 : aspect < 1.45 ? 17.2 : 8.8;
-      const y = aspect < 0.75 ? 5.9 : aspect < 1 ? 5.45 : aspect < 1.45 ? 5.7 : 5.1;
-      const x = aspect < 0.75 ? 3.2 : aspect < 1 ? 4.2 : aspect < 1.45 ? 3.8 : 6.35;
+      const compact = aspect < 1;
+      const z = aspect < 0.75 ? 25.6 : aspect < 1 ? 22.6 : aspect < 1.45 ? 17.2 : 8.8;
+      const y = aspect < 0.75 ? 6.6 : aspect < 1 ? 6.2 : aspect < 1.45 ? 5.7 : 5.1;
+      const x = aspect < 0.75 ? 2.9 : aspect < 1 ? 3.35 : aspect < 1.45 ? 3.8 : 6.35;
       camera.position.set(x, y, z);
-      camera.lookAt(cameraTarget);
+      camera.lookAt(compact ? new THREE.Vector3(-0.25, 0.72, 0) : cameraTarget);
     };
     positionCamera();
 
