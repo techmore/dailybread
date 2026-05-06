@@ -100,6 +100,82 @@ const ingredientFeed = [
   { label: 'Salt', short: 'NaCl', color: '#f7f7ef' }
 ];
 
+const cookieIngredientLabels = {
+  flour: 'Flour',
+  butter: 'Butter',
+  brownSugar: 'Brown sugar',
+  sugar: 'White sugar',
+  eggs: 'Eggs',
+  chocolateChips: 'Chocolate chips',
+  whiteChips: 'White chocolate chips',
+  macadamia: 'Macadamia nuts',
+  cocoa: 'Cocoa',
+  salt: 'Salt'
+};
+
+const cookieIngredientCosts = {
+  flour: flourCostPerG,
+  butter: 4.49 / 453.592,
+  brownSugar: 2.49 / (2 * 453.592),
+  sugar: 3.19 / (4 * 453.592),
+  eggs: 3.99 / (12 * 50),
+  chocolateChips: 3.98 / (12 * 28.3495),
+  whiteChips: 4.48 / (11 * 28.3495),
+  macadamia: 8.99 / (8 * 28.3495),
+  cocoa: 5.49 / (8 * 28.3495),
+  salt: saltCostPerG
+};
+
+const cookieRecipes = {
+  classic: {
+    id: 'classic',
+    label: 'Classic chocolate chip',
+    short: 'Classic',
+    batchYield: 24,
+    bakeMin: 11,
+    schoolPrice: 0.95,
+    retailPrice: 2.15,
+    doughColor: '#b96f35',
+    chipColor: '#2c211b',
+    ingredients: { flour: 360, butter: 226, brownSugar: 150, sugar: 100, eggs: 100, chocolateChips: 340, salt: 6 },
+    otherCostPerBatch: 0.55
+  },
+  white: {
+    id: 'white',
+    label: 'White chocolate macadamia',
+    short: 'White chip',
+    batchYield: 24,
+    bakeMin: 11,
+    schoolPrice: 1.15,
+    retailPrice: 2.45,
+    doughColor: '#d7b66d',
+    chipColor: '#fffaf0',
+    ingredients: { flour: 360, butter: 226, brownSugar: 130, sugar: 120, eggs: 100, whiteChips: 300, macadamia: 120, salt: 6 },
+    otherCostPerBatch: 0.6
+  },
+  double: {
+    id: 'double',
+    label: 'Double chocolate chip',
+    short: 'Double',
+    batchYield: 24,
+    bakeMin: 12,
+    schoolPrice: 1.05,
+    retailPrice: 2.35,
+    doughColor: '#573527',
+    chipColor: '#f2d9ad',
+    ingredients: { flour: 310, cocoa: 45, butter: 226, brownSugar: 160, sugar: 110, eggs: 100, chocolateChips: 280, salt: 6 },
+    otherCostPerBatch: 0.62
+  }
+};
+
+const cookieStages = [
+  ['Mix', 'Cream butter, sugar, eggs, flour, and inclusions.'],
+  ['Portion', 'Scoop consistent pucks onto lined trays.'],
+  ['Bake', 'Rotate sheet pans through the oven window.'],
+  ['Cool', 'Set cookies on racks before packaging.'],
+  ['Pack', 'Bag singles, pairs, or school-service trays.']
+];
+
 const homeWorkflowTemplates = [
   { id: 'feed', name: 'Feed Starter', minutes: 10, detail: 'Flour and water dose into the starter jar for the next-day bake.' },
   { id: 'starter', name: 'Starter Peak', minutes: 480, detail: 'The jar tracks rise height, warmth, and activity until the culture peaks.' },
@@ -141,7 +217,7 @@ const homePathPoints = [
   [0.55, 0.35, -0.95]
 ];
 
-const pages = ['overview', 'model', 'automation', 'home'];
+const pages = ['overview', 'model', 'automation', 'cookies', 'home'];
 const assumptionStorageKey = 'dailybreadAssumptions';
 
 const assumptionMinimums = {
@@ -369,6 +445,111 @@ function getHomeInsights(model, schedule) {
     ['Main constraint', 'Starter time', 'Most of the schedule is passive fermentation; the robotic work is short but precisely timed.'],
     ['Cost signal', formatSmallMoney(model.unitCost), `Ingredient and energy cost per loaf before equipment payback.`]
   ];
+}
+
+function computeCookieModel({ recipeId, batches, multiplier, schoolPack, assumptions }) {
+  const recipe = cookieRecipes[recipeId] || cookieRecipes.classic;
+  const safeBatches = clampInteger(batches, 4, 1, 500);
+  const safeMultiplier = clampInteger(multiplier, 1, 1, 50);
+  const safeAssumptions = sanitizeAssumptions(assumptions);
+  const batchCount = safeBatches * safeMultiplier;
+  const cookies = batchCount * recipe.batchYield;
+  const ovenUnits = Math.max(1, Math.ceil(safeMultiplier / 3));
+  const panCapacity = 24 * ovenUnits;
+  const bakeCycles = Math.ceil(cookies / panCapacity);
+  const bakeMinutes = bakeCycles * (recipe.bakeMin + 4);
+  const activeMinutes = 18 * safeMultiplier + bakeMinutes + 25 + (schoolPack ? 16 : 22);
+  const electricityKwh = bakeCycles * 1.1 + safeMultiplier * 0.35;
+  const electricityCost = electricityKwh * safeAssumptions.electricityRate;
+  const packagingUnit = schoolPack ? 0.04 : 0.11;
+  const packagingCost = cookies * packagingUnit;
+  const waterL = 2.5 + batchCount * 0.18 + safeMultiplier * 1.4;
+  const laborHours = (activeMinutes / 60) * (schoolPack ? 0.52 : 0.68);
+  const laborCost = laborHours * safeAssumptions.laborRate;
+  const ingredientRows = Object.entries(recipe.ingredients).map(([key, gramsPerBatch]) => {
+    const grams = gramsPerBatch * batchCount;
+    const cost = grams * (cookieIngredientCosts[key] || 0);
+    return {
+      key,
+      label: cookieIngredientLabels[key] || key,
+      grams,
+      cost
+    };
+  });
+  const ingredientCost = ingredientRows.reduce((sum, row) => sum + row.cost, 0) + recipe.otherCostPerBatch * batchCount;
+  const totalCost = ingredientCost + electricityCost + packagingCost + laborCost;
+  const unitCost = totalCost / cookies;
+  const price = schoolPack ? recipe.schoolPrice : recipe.retailPrice;
+  const revenue = cookies * price;
+  const gross = revenue - totalCost;
+
+  return {
+    recipe,
+    batches: safeBatches,
+    multiplier: safeMultiplier,
+    batchCount,
+    cookies,
+    ovenUnits,
+    panCapacity,
+    bakeCycles,
+    bakeMinutes,
+    activeMinutes,
+    electricityRate: safeAssumptions.electricityRate,
+    electricityKwh,
+    electricityCost,
+    packagingUnit,
+    packagingCost,
+    waterL,
+    laborHours,
+    laborCost,
+    ingredientRows,
+    ingredientCost,
+    totalCost,
+    unitCost,
+    price,
+    revenue,
+    gross,
+    schoolPack
+  };
+}
+
+function getCookieInsights(model) {
+  const readyOffset = 7 * 60 + model.activeMinutes;
+  const constraint = model.bakeMinutes > 55 ? 'Oven cycles' : 'Portioning';
+  return [
+    ['Ready by', formatWallClock(readyOffset), `${formatDuration(model.activeMinutes)} active window from first mix.`],
+    ['Mixer batches', model.batchCount, `${model.recipe.batchYield} cookies per batch at x${model.multiplier} scale.`],
+    ['Oven cycles', model.bakeCycles, `${model.panCapacity} cookies per oven pass across ${model.ovenUnits} oven lane${model.ovenUnits === 1 ? '' : 's'}.`],
+    ['Main constraint', constraint, `${formatDuration(model.bakeMinutes)} of bake time before cooling and packout.`],
+    ['Gross signal', formatMoney(model.gross), `${formatSmallMoney(model.unitCost)} cost per cookie before equipment payback.`]
+  ];
+}
+
+function getCookiePurchaseRows(model) {
+  const grams = Object.fromEntries(model.ingredientRows.map((row) => [row.key, row.grams]));
+  const rows = [
+    ['King Arthur bread flour, 12 lb bag', Math.max(1, Math.ceil((grams.flour || 0) / (12 * 453.592))), 11.34, `${format1((grams.flour || 0) / 1000)} kg flour`],
+    ['Unsalted butter, 1 lb box', Math.max(1, Math.ceil((grams.butter || 0) / 453.592)), 4.49, `${format1((grams.butter || 0) / 453.592)} lb butter`],
+    ['Light brown sugar, 2 lb bag', Math.max(1, Math.ceil((grams.brownSugar || 0) / (2 * 453.592))), 2.49, `${format1((grams.brownSugar || 0) / 1000)} kg brown sugar`],
+    ['Granulated sugar, 4 lb bag', Math.max(1, Math.ceil((grams.sugar || 0) / (4 * 453.592))), 3.19, `${format1((grams.sugar || 0) / 1000)} kg white sugar`],
+    ['Large eggs, dozen', Math.max(1, Math.ceil((grams.eggs || 0) / (12 * 50))), 3.99, `${format1((grams.eggs || 0) / 50)} eggs equivalent`],
+    ['Morton coarse kosher salt, 53 oz', 1, 3.39, `${format1((grams.salt || 0))} g salt`]
+  ];
+  if (grams.chocolateChips) {
+    rows.push(['Semi-sweet chocolate chips, 12 oz bag', Math.max(1, Math.ceil(grams.chocolateChips / (12 * 28.3495))), 3.98, `${format1(grams.chocolateChips / 1000)} kg chips`]);
+  }
+  if (grams.whiteChips) {
+    rows.push(['White chocolate chips, 11 oz bag', Math.max(1, Math.ceil(grams.whiteChips / (11 * 28.3495))), 4.48, `${format1(grams.whiteChips / 1000)} kg white chips`]);
+  }
+  if (grams.macadamia) {
+    rows.push(['Macadamia nuts, 8 oz bag', Math.max(1, Math.ceil(grams.macadamia / (8 * 28.3495))), 8.99, `${format1(grams.macadamia / 1000)} kg nuts`]);
+  }
+  if (grams.cocoa) {
+    rows.push(['Unsweetened cocoa, 8 oz container', Math.max(1, Math.ceil(grams.cocoa / (8 * 28.3495))), 5.49, `${format1(grams.cocoa)} g cocoa`]);
+  }
+  rows.push(['Cookie bags or tray liners', model.cookies, model.packagingUnit, model.schoolPack ? 'School-service single packaging' : 'Retail sleeve / bag allowance']);
+  rows.push(['Electricity allowance', Math.ceil(model.electricityKwh), model.electricityRate, 'Uses editable utility rate in calculations']);
+  return rows;
 }
 
 function clampNumber(value, fallback, min = 0, max = Number.POSITIVE_INFINITY) {
@@ -638,6 +819,7 @@ function App() {
         />
       )}
       {page === 'automation' && <Automation model={model} multiplier={multiplier} setMultiplier={setMultiplier} assumptions={safeAssumptions} />}
+      {page === 'cookies' && <Cookies assumptions={safeAssumptions} />}
       {page === 'home' && <HomeDailyBread assumptions={safeAssumptions} />}
       <Footer />
     </main>
@@ -655,6 +837,7 @@ function Nav({ page, setPage }) {
           ['overview', 'Project'],
           ['model', 'Model'],
           ['automation', 'Automation'],
+          ['cookies', 'Cookies'],
           ['home', 'Home Daily Bread']
         ].map(([id, label]) => (
           <button className={page === id ? 'active' : ''} onClick={() => setPage(id)} key={id}>
@@ -684,10 +867,14 @@ function Overview({ model, setPage }) {
             <button className="secondary" onClick={() => setPage('home')}>
               Explore home cell
             </button>
+            <button className="secondary" onClick={() => setPage('cookies')}>
+              Model cookies
+            </button>
           </div>
           <div className="chips">
             <span>50 loaf lunch target</span>
             <span>Atlas Craft 3 oven</span>
+            <span>Cookie batch mode</span>
             <span>School delivery mode</span>
           </div>
         </div>
@@ -878,6 +1065,347 @@ function AssumptionEditor({ assumptions, setAssumptions }) {
       {fields.map(([key, label, step, min]) => (
         <NumberInput key={key} label={label} value={assumptions[key]} step={step} min={min} onChange={(value) => update(key, value)} />
       ))}
+    </div>
+  );
+}
+
+function Cookies({ assumptions }) {
+  const [recipeId, setRecipeId] = useState('classic');
+  const [batches, setBatches] = useState(4);
+  const [multiplier, setMultiplier] = useState(1);
+  const [schoolPack, setSchoolPack] = useState(true);
+  const model = useMemo(() => computeCookieModel({ recipeId, batches, multiplier, schoolPack, assumptions }), [recipeId, batches, multiplier, schoolPack, assumptions]);
+  const insights = getCookieInsights(model);
+  const rows = [
+    ['Flour', `${format1((model.ingredientRows.find((row) => row.key === 'flour')?.grams || 0) / 1000)} kg`, formatSmallMoney(model.ingredientRows.find((row) => row.key === 'flour')?.cost || 0)],
+    ['Butter', `${format1((model.ingredientRows.find((row) => row.key === 'butter')?.grams || 0) / 453.592)} lb`, formatSmallMoney(model.ingredientRows.find((row) => row.key === 'butter')?.cost || 0)],
+    ['Sugars', `${format1(((model.ingredientRows.find((row) => row.key === 'brownSugar')?.grams || 0) + (model.ingredientRows.find((row) => row.key === 'sugar')?.grams || 0)) / 1000)} kg`, 'brown + white'],
+    ['Eggs', `${format1((model.ingredientRows.find((row) => row.key === 'eggs')?.grams || 0) / 50)} eggs`, formatSmallMoney(model.ingredientRows.find((row) => row.key === 'eggs')?.cost || 0)],
+    ['Inclusions', `${format1(model.ingredientRows.filter((row) => ['chocolateChips', 'whiteChips', 'macadamia', 'cocoa'].includes(row.key)).reduce((sum, row) => sum + row.grams, 0) / 1000)} kg`, model.recipe.short],
+    ['Packaging', `${model.cookies} cookies`, formatSmallMoney(model.packagingCost)],
+    ['Electricity', `${format1(model.electricityKwh)} kWh`, formatSmallMoney(model.electricityCost)],
+    ['Wash water', `${format1(model.waterL)} L`, 'bowls, trays, hands']
+  ];
+
+  return (
+    <section className="page cookiePage">
+      <div className="pageHead">
+        <p className="eyebrow">Cookie batch model</p>
+        <h1>Plan classic, white chocolate, and double chocolate cookie runs.</h1>
+        <p>Switch recipes, scale mixer batches, compare school-service versus retail packaging, and estimate ingredients, oven cycles, labor, water, electricity, unit cost, and gross signal.</p>
+      </div>
+      <div className="pitchStrip">
+        <Metric label="Daily cookies" value={`${model.cookies}`} />
+        <Metric label="Mixer batches" value={model.batchCount} />
+        <Metric label="Oven cycles" value={model.bakeCycles} />
+        <Metric label="Cost / cookie" value={formatSmallMoney(model.unitCost)} />
+      </div>
+      <section className="workflowShowcase cookieShowcase">
+        <div className="workflowHeader">
+          <div>
+            <p className="eyebrow">Cookie line in motion</p>
+            <h2>Watch dough become scooped, baked, cooled, and packed cookies.</h2>
+            <div className="ingredientLegend">
+              {[
+                ['Flour', 'F', '#efe3bf'],
+                ['Butter', 'B', '#f0cf75'],
+                ['Sugar', 'S', '#fffaf0'],
+                ['Chips', 'C', model.recipe.chipColor]
+              ].map(([label, short, color]) => (
+                <span key={label}>
+                  <b style={{ background: color }}>{short}</b>
+                  {label}
+                </span>
+              ))}
+            </div>
+          </div>
+          <div className="cookieControls">
+            <label>Recipe</label>
+            <div className="segments">
+              {Object.values(cookieRecipes).map((recipe) => (
+                <button className={recipe.id === recipeId ? 'selected' : ''} onClick={() => setRecipeId(recipe.id)} key={recipe.id}>
+                  {recipe.short}
+                </button>
+              ))}
+            </div>
+            <Control label="Base batches" value={batches} min="1" max="20" onChange={setBatches} />
+            <label>Scale multiplier</label>
+            <div className="segments">
+              {[1, 2, 3, 4, 5, 8].map((x) => (
+                <button className={x === multiplier ? 'selected' : ''} onClick={() => setMultiplier(x)} key={x}>
+                  x{x}
+                </button>
+              ))}
+            </div>
+            <Toggle icon={School} label="School-service pack" value={schoolPack} setValue={setSchoolPack} />
+          </div>
+        </div>
+        <CookieScene model={model} />
+        <AutomationInsights insights={insights} />
+      </section>
+      <div className="autoGrid">
+        <Panel title="Daily Cookie Output">
+          <div className="kpiRow">
+            <Metric label="Recipe" value={model.recipe.short} />
+            <Metric label="Bake window" value={formatDuration(model.bakeMinutes)} />
+            <Metric label="Active window" value={formatDuration(model.activeMinutes)} />
+            <Metric label="Projected gross" value={formatMoney(model.gross)} />
+          </div>
+          <table>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row[0]}>
+                  <th>{row[0]}</th>
+                  <td>{row[1]}</td>
+                  <td>{row[2]}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Panel>
+        <Panel title="Recipe Assumptions">
+          <div className="timingGrid">
+            <Metric label="Cookies / batch" value={model.recipe.batchYield} />
+            <Metric label="Bake temp" value="350F" />
+            <Metric label="Bake per cycle" value={`${model.recipe.bakeMin} min`} />
+            <Metric label="Pan capacity" value={`${model.panCapacity} cookies`} />
+          </div>
+          <div className="cookieStageList">
+            {cookieStages.map(([stage, detail]) => (
+              <article key={stage}>
+                <b>{stage}</b>
+                <span>{detail}</span>
+              </article>
+            ))}
+          </div>
+          <p className="note">The model treats each batch as 24 cookies, then scales sheet-pan cycles by oven lanes. White chocolate macadamia carries higher inclusion cost; school-service mode lowers selling price and packaging cost.</p>
+        </Panel>
+      </div>
+      <Panel title="Cookie Purchase List and Pricing Inputs">
+        <div className="referenceGrid">
+          <section className="referenceGroup">
+            <h3>Reference Items</h3>
+            <ul>
+              <li>King Arthur bread flour reference carried over from the bread model: 12 lb bag at $11.34.</li>
+              <li>Morton coarse kosher salt reference carried over from the bread model: 53 oz at $3.39.</li>
+              <li>Butter modeled at $4.49/lb; eggs at $3.99/dozen; semi-sweet chips at $3.98/12 oz.</li>
+              <li>White chocolate chips modeled at $4.48/11 oz; macadamias at $8.99/8 oz; cocoa at $5.49/8 oz.</li>
+            </ul>
+          </section>
+          <section className="referenceGroup">
+            <h3>Recipe Basis</h3>
+            <ul>
+              <li>Classic chocolate chip: butter, brown sugar, white sugar, eggs, flour, salt, and semi-sweet chips.</li>
+              <li>White chocolate macadamia: white chips and nuts replace semi-sweet chips with a higher inclusion cost.</li>
+              <li>Double chocolate: cocoa plus chocolate chips, with a 12 minute bake cycle.</li>
+              <li>Packaging is modeled at {formatSmallMoney(model.packagingUnit)} per cookie in the selected mode.</li>
+            </ul>
+          </section>
+        </div>
+        <div className="purchaseGrid wide">
+          <PurchaseTable title="Cookie Consumables" rows={getCookiePurchaseRows(model)} />
+        </div>
+      </Panel>
+    </section>
+  );
+}
+
+function CookieScene({ model }) {
+  const mount = useRef(null);
+  const [sceneError, setSceneError] = useState(false);
+
+  useEffect(() => {
+    const el = mount.current;
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color('#fff8ec');
+    const camera = new THREE.PerspectiveCamera(38, el.clientWidth / el.clientHeight, 0.1, 100);
+    const target = new THREE.Vector3(0.25, 0.45, 0);
+    const positionCamera = () => {
+      const aspect = el.clientWidth / Math.max(1, el.clientHeight);
+      const z = aspect < 1 ? 7.4 : 5.8;
+      camera.position.set(3.8, 3.05, z);
+      camera.lookAt(target);
+    };
+    positionCamera();
+
+    const rendererCanvas = document.createElement('canvas');
+    const contextOptions = { antialias: true };
+    const webglContext = rendererCanvas.getContext('webgl2', contextOptions) || rendererCanvas.getContext('webgl', contextOptions);
+    if (!webglContext) {
+      setSceneError(true);
+      return undefined;
+    }
+
+    let renderer;
+    try {
+      renderer = new THREE.WebGLRenderer({ canvas: rendererCanvas, context: webglContext, antialias: true });
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.03;
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      setSceneError(false);
+    } catch {
+      setSceneError(true);
+      return undefined;
+    }
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(el.clientWidth, el.clientHeight);
+    el.appendChild(renderer.domElement);
+
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x7a6043, 2.45));
+    const keyLight = new THREE.DirectionalLight(0xffffff, 1.35);
+    keyLight.position.set(3, 5, 4);
+    keyLight.castShadow = true;
+    scene.add(keyLight);
+
+    const addBox = (x, y, z, w, h, d, color, opacity = 1) => {
+      const mesh = new THREE.Mesh(
+        new THREE.BoxGeometry(w, h, d),
+        new THREE.MeshStandardMaterial({ color, roughness: 0.56, metalness: 0.08, transparent: opacity < 1, opacity })
+      );
+      mesh.position.set(x, y, z);
+      mesh.castShadow = opacity >= 0.55;
+      mesh.receiveShadow = true;
+      scene.add(mesh);
+      return mesh;
+    };
+    const addCylinder = (x, y, z, radius, height, color, opacity = 1) => {
+      const mesh = new THREE.Mesh(
+        new THREE.CylinderGeometry(radius, radius, height, 32),
+        new THREE.MeshStandardMaterial({ color, roughness: 0.48, metalness: 0.14, transparent: opacity < 1, opacity })
+      );
+      mesh.position.set(x, y, z);
+      mesh.castShadow = opacity >= 0.55;
+      mesh.receiveShadow = true;
+      scene.add(mesh);
+      return mesh;
+    };
+    const addLabel = (text, x, y, z) => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 512;
+      canvas.height = 128;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = 'rgba(27, 34, 31, 0.88)';
+      ctx.roundRect(18, 18, 476, 78, 18);
+      ctx.fill();
+      ctx.fillStyle = '#fffaf0';
+      ctx.font = '800 36px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(text, 256, 70);
+      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas), transparent: true }));
+      sprite.position.set(x, y, z);
+      sprite.scale.set(1.25, 0.3, 1);
+      scene.add(sprite);
+      return sprite;
+    };
+    const createCookie = (x, y, z, baked = false) => {
+      const group = new THREE.Group();
+      group.position.set(x, y, z);
+      const body = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.14, 0.14, 0.035, 32),
+        new THREE.MeshStandardMaterial({ color: baked ? model.recipe.doughColor : '#d7b66d', roughness: 0.86 })
+      );
+      body.castShadow = true;
+      body.receiveShadow = true;
+      group.add(body);
+      for (let i = 0; i < 5; i += 1) {
+        const chip = new THREE.Mesh(
+          new THREE.SphereGeometry(0.018, 10, 8),
+          new THREE.MeshStandardMaterial({ color: model.recipe.chipColor, roughness: 0.42 })
+        );
+        const angle = i * 1.26;
+        chip.position.set(Math.cos(angle) * 0.07, 0.025, Math.sin(angle) * 0.055);
+        group.add(chip);
+      }
+      scene.add(group);
+      return group;
+    };
+
+    addBox(0, -0.06, 0, 6.4, 0.12, 2.6, '#e6d8bf');
+    addBox(0, 0.98, -1.36, 6.4, 2.08, 0.05, '#e6d8bf', 0.24);
+    addLabel('MIX', -2.25, 1.22, 0.72);
+    addLabel('PORTION', -0.85, 1.12, 0.72);
+    addLabel('BAKE', 0.65, 1.3, 0.72);
+    addLabel('COOL', 2.0, 1.18, 0.72);
+    addLabel('PACK', 3.0, 1.02, 0.72);
+
+    addCylinder(-2.25, 0.38, -0.18, 0.46, 0.34, '#d8d1c2');
+    const mixerBowl = addCylinder(-2.25, 0.6, -0.18, 0.35, 0.28, '#596a70', 0.78);
+    const paddle = addBox(-2.25, 0.86, -0.18, 0.08, 0.5, 0.08, '#d9a73a');
+    paddle.rotation.z = 0.72;
+    addBox(-1.0, 0.28, 0.05, 1.05, 0.08, 0.66, '#596a70');
+    const rawTrayCookies = Array.from({ length: 12 }, (_, index) => createCookie(-1.38 + (index % 4) * 0.25, 0.36, -0.18 + Math.floor(index / 4) * 0.2, false));
+    addBox(0.65, 0.55, -0.22, 1.18, 0.86, 0.86, '#4f6474');
+    const ovenGlow = addBox(0.65, 0.55, 0.23, 0.92, 0.46, 0.04, '#f0a33c', 0.32);
+    addBox(0.65, 0.55, 0.28, 1.02, 0.58, 0.04, '#101817', 0.62);
+    addBox(2.0, 0.35, -0.12, 1.18, 0.08, 0.74, '#c8c2b5');
+    const rackCookies = Array.from({ length: 15 }, (_, index) => createCookie(1.55 + (index % 5) * 0.22, 0.43, -0.35 + Math.floor(index / 5) * 0.22, true));
+    const packBags = [0, 1, 2, 3].map((index) => addBox(2.78 + index * 0.18, 0.34 + index * 0.035, 0.08, 0.16, 0.1, 0.22, '#fffaf0', 0.62));
+
+    const path = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(-2.25, 0.45, -0.18),
+      new THREE.Vector3(-1.0, 0.46, 0.05),
+      new THREE.Vector3(0.65, 0.47, 0.1),
+      new THREE.Vector3(2.0, 0.48, -0.05),
+      new THREE.Vector3(3.05, 0.42, 0.04)
+    ]);
+    scene.add(new THREE.Mesh(new THREE.TubeGeometry(path, 70, 0.018, 8), new THREE.MeshStandardMaterial({ color: '#71865c' })));
+    const movingCookies = Array.from({ length: Math.min(10, Math.max(4, Math.ceil(model.cookies / 24))) }, (_, index) => createCookie(-2.25, 0.48, -0.18, index > 2));
+
+    let raf;
+    const startedAt = performance.now();
+    const animate = () => {
+      const elapsed = (performance.now() - startedAt) / 1000;
+      mixerBowl.rotation.y += 0.018;
+      paddle.rotation.y += 0.12;
+      ovenGlow.material.opacity = 0.28 + Math.sin(elapsed * 4) * 0.08;
+      rawTrayCookies.forEach((cookie, index) => {
+        cookie.scale.setScalar(0.9 + Math.sin(elapsed * 2 + index) * 0.02);
+      });
+      rackCookies.forEach((cookie, index) => {
+        cookie.position.y = 0.43 + Math.sin(elapsed * 1.8 + index) * 0.004;
+      });
+      packBags.forEach((bag, index) => {
+        bag.position.y = 0.34 + index * 0.035 + Math.sin(elapsed * 2 + index) * 0.006;
+      });
+      movingCookies.forEach((cookie, index) => {
+        const t = (elapsed * 0.09 + index * 0.09) % 1;
+        cookie.position.copy(path.getPointAt(t));
+        cookie.position.y += Math.sin(t * Math.PI) * 0.08;
+        cookie.rotation.y += 0.05;
+      });
+      scene.rotation.y = Math.sin(elapsed * 0.16) * 0.06;
+      renderer.render(scene, camera);
+      raf = requestAnimationFrame(animate);
+    };
+    animate();
+
+    const resize = () => {
+      renderer.setSize(el.clientWidth, el.clientHeight);
+      camera.aspect = el.clientWidth / el.clientHeight;
+      camera.updateProjectionMatrix();
+      positionCamera();
+    };
+    window.addEventListener('resize', resize);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('resize', resize);
+      renderer.dispose();
+      if (renderer.domElement.parentNode === el) {
+        el.removeChild(renderer.domElement);
+      }
+    };
+  }, [model.recipe, model.cookies]);
+
+  return (
+    <div className={`scene cookieScene ${sceneError ? 'sceneFallback' : ''}`} ref={mount}>
+      {sceneError && (
+        <div>
+          <strong>3D renderer unavailable</strong>
+          <span>The cookie model still runs below; open this page in a browser with WebGL enabled to view the animated cookie line.</span>
+        </div>
+      )}
     </div>
   );
 }

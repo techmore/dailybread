@@ -73,6 +73,7 @@ button {
 
 .nav nav {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
@@ -526,6 +527,51 @@ td:last-child {
   width: 100%;
 }
 
+.cookieShowcase .scene {
+  min-height: 540px;
+}
+
+.cookieShowcase .workflowHeader {
+  align-items: start;
+}
+
+.cookieControls {
+  background: rgba(255, 250, 240, .82);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  min-width: min(420px, 100%);
+  padding: 14px;
+}
+
+.cookieControls label {
+  margin-top: 0;
+}
+
+.cookieStageList {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.cookieStageList article {
+  background: var(--surface-muted);
+  border-radius: 6px;
+  padding: 10px;
+}
+
+.cookieStageList b,
+.cookieStageList span {
+  display: block;
+}
+
+.cookieStageList span {
+  color: var(--ink-muted);
+  font-size: .86rem;
+  margin-top: 3px;
+}
+
 .homeControls {
   background: rgba(255, 250, 240, .82);
   border: 1px solid var(--line);
@@ -846,6 +892,10 @@ footer {
 
   .homeShowcase .scene {
     min-height: 720px;
+  }
+
+  .cookieShowcase .scene {
+    min-height: 420px;
   }
 
   footer {
