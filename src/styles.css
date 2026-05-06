@@ -418,8 +418,64 @@ td:last-child {
 .autoGrid {
   display: grid;
   gap: 18px;
-  grid-template-columns: minmax(0, 1.15fr) minmax(360px, .7fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   margin-bottom: 18px;
+}
+
+.workflowShowcase {
+  background: linear-gradient(180deg, #fffaf0 0%, #f0e6d3 100%);
+  border-bottom: 1px solid var(--line);
+  border-top: 1px solid var(--line);
+  box-shadow: 0 24px 70px rgba(58, 48, 33, .1);
+  margin: 0 calc(clamp(18px, 5vw, 72px) * -1) 18px;
+  padding: clamp(18px, 3vw, 30px) clamp(18px, 5vw, 72px);
+}
+
+.workflowHeader {
+  align-items: end;
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  margin-bottom: 18px;
+}
+
+.workflowHeader h2 {
+  font-size: clamp(1.8rem, 3.2vw, 3.4rem);
+  line-height: 1;
+  margin-bottom: 0;
+  max-width: 900px;
+}
+
+.ingredientLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.ingredientLegend span {
+  align-items: center;
+  background: rgba(255, 250, 240, .78);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink);
+  display: inline-flex;
+  font-weight: 800;
+  gap: 8px;
+  padding: 7px 10px 7px 7px;
+}
+
+.ingredientLegend b {
+  align-items: center;
+  border: 1px solid rgba(26, 36, 33, .28);
+  border-radius: 999px;
+  color: var(--ink);
+  display: inline-flex;
+  font-size: .72rem;
+  height: 28px;
+  justify-content: center;
+  min-width: 28px;
+  padding: 0 6px;
 }
 
 .scene {
@@ -429,6 +485,11 @@ td:last-child {
   border-radius: 6px;
   min-height: 390px;
   overflow: hidden;
+}
+
+.workflowShowcase .scene {
+  aspect-ratio: 21 / 9;
+  min-height: 620px;
 }
 
 .sceneControls {
@@ -463,6 +524,56 @@ td:last-child {
 .sceneControls span {
   color: #d6ded6;
   font-size: .9rem;
+}
+
+.stageTimeline,
+.timingGrid {
+  display: grid;
+  gap: 10px;
+}
+
+.stageTimeline {
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  margin-top: 12px;
+}
+
+.stageTimeline div {
+  background: rgba(255, 250, 240, .72);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  min-height: 72px;
+  padding: 10px;
+}
+
+.stageTimeline .current {
+  background: var(--evergreen);
+  border-color: var(--evergreen);
+  color: #fff;
+}
+
+.stageTimeline b,
+.stageTimeline span {
+  display: block;
+}
+
+.stageTimeline b {
+  font-size: .86rem;
+  line-height: 1.15;
+}
+
+.stageTimeline span {
+  color: var(--ink-muted);
+  font-size: .78rem;
+  margin-top: 5px;
+}
+
+.stageTimeline .current span {
+  color: #d6ded6;
+}
+
+.timingGrid {
+  grid-template-columns: repeat(2, 1fr);
+  margin-bottom: 16px;
 }
 
 .wide {
@@ -520,7 +631,8 @@ footer {
   .hero,
   .modelLayout,
   .autoGrid,
-  .purchaseGrid {
+  .purchaseGrid,
+  .workflowHeader {
     grid-template-columns: 1fr;
   }
 
@@ -529,6 +641,7 @@ footer {
   .kpiRow,
   .finance,
   .pitchStrip,
+  .stageTimeline,
   .assumptionGrid {
     grid-template-columns: 1fr 1fr;
   }
@@ -547,6 +660,8 @@ footer {
   .finance,
   .pitchStrip,
   .assumptionGrid,
+  .stageTimeline,
+  .timingGrid,
   .metrics {
     grid-template-columns: 1fr;
   }
@@ -557,6 +672,10 @@ footer {
 
   .scene {
     min-height: 300px;
+  }
+
+  .workflowShowcase .scene {
+    min-height: 360px;
   }
 
   footer {

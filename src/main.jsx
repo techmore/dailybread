@@ -52,13 +52,20 @@ const defaultAssumptions = {
 };
 
 const workflowStages = [
-  { name: 'Mix', detail: 'Flour, starter, water, and salt enter the mixer.' },
-  { name: 'Proof', detail: 'Tubs move to controlled proofing racks.' },
-  { name: 'Load', detail: 'Robot arm loads deck trays into the steam oven.' },
-  { name: 'Bake', detail: 'Atlas decks bake 18 loaves per batch.' },
-  { name: 'Cool', detail: 'Finished loaves move to rack lanes.' },
-  { name: 'Slice and Bag', detail: 'School loaves are sliced, bagged, and staged.' },
-  { name: 'Clean', detail: 'Food-safe tools run a timed washdown cycle.' }
+  { name: 'Mix', duration: '20 min', detail: 'Flour, starter, water, and salt meter into the mixer.' },
+  { name: 'Bulk Proof', duration: '3 hr', detail: 'Dough tubs move to controlled proofing racks.' },
+  { name: 'Shape + Load', duration: '25 min', detail: 'Robot arm stages trays and loads the steam oven.' },
+  { name: 'Bake', duration: '52 min/load', detail: 'Atlas decks bake 18 loaves per batch, including steam and unload time.' },
+  { name: 'Cool', duration: '90 min', detail: 'Finished loaves move through cooling rack lanes.' },
+  { name: 'Slice + Bag', duration: '40 min', detail: 'School loaves are sliced, bagged, and staged for delivery.' },
+  { name: 'Clean', duration: '15 min', detail: 'Food-safe tools run a timed washdown cycle.' }
+];
+
+const ingredientFeed = [
+  { label: 'Flour', short: 'F', color: '#efe3bf' },
+  { label: 'Water', short: 'H2O', color: '#8fb3c7' },
+  { label: 'Starter', short: 'S', color: '#d0a85c' },
+  { label: 'Salt', short: 'NaCl', color: '#f7f7ef' }
 ];
 
 const formatMoney = (n) => n.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
@@ -357,17 +364,31 @@ function Automation({ model, multiplier, setMultiplier, assumptions }) {
         <Metric label="Concept CAPEX" value={formatMoney(capex)} />
         <Metric label="Water/day" value={`${format1(model.waterL + model.cleaningWater)} L`} />
       </div>
-      <div className="autoGrid">
-        <Panel title="Animated Container Workflow">
-          <ContainerScene multiplier={multiplier} />
-          <div className="segments wide">
+      <section className="workflowShowcase">
+        <div className="workflowHeader">
+          <div>
+            <p className="eyebrow">Production line in motion</p>
+            <h2>Watch ingredients become a staged school lunch run.</h2>
+            <div className="ingredientLegend">
+              {ingredientFeed.map((item) => (
+                <span key={item.label}>
+                  <b style={{ background: item.color }}>{item.short}</b>
+                  {item.label}
+                </span>
+              ))}
+            </div>
+          </div>
+          <div className="segments">
             {[1, 2, 3, 4, 5, 8].map((x) => (
               <button className={x === multiplier ? 'selected' : ''} onClick={() => setMultiplier(x)} key={x}>
                 x{x}
               </button>
             ))}
           </div>
-        </Panel>
+        </div>
+        <ContainerScene multiplier={multiplier} />
+      </section>
+      <div className="autoGrid">
         <Panel title="Recommended Configuration">
           <div className="stack">
             <Metric label="Configuration" value={containers} />
@@ -375,6 +396,15 @@ function Automation({ model, multiplier, setMultiplier, assumptions }) {
             <Metric label="Unit cost" value={formatSmallMoney(model.unitCost)} />
           </div>
           <CostTable multiplier={multiplier} assumptions={assumptions} />
+        </Panel>
+        <Panel title="Batch Timing Detail">
+          <div className="timingGrid">
+            <Metric label="Mix + shape" value="45 min" />
+            <Metric label="Bulk/proof time" value="3 hr" />
+            <Metric label="Oven loads" value={model.batches} />
+            <Metric label="Bake window" value={`${format1(model.bakeHours)}h`} />
+          </div>
+          <p className="note">The animated line compresses the day into a loop: ingredient metering, mix, proof, robotic loading, bake, cool, slice, bag, and clean. The financial model still uses the loaf count and oven batch math above.</p>
         </Panel>
       </div>
       <Panel title="Purchase List and Pricing Assumptions">
@@ -408,8 +438,8 @@ function ContainerScene({ multiplier }) {
     const el = mount.current;
     const scene = new THREE.Scene();
     scene.background = new THREE.Color('#f7f2e8');
-    const camera = new THREE.PerspectiveCamera(42, el.clientWidth / el.clientHeight, 0.1, 100);
-    camera.position.set(8.5, 6.8, 10);
+    const camera = new THREE.PerspectiveCamera(38, el.clientWidth / el.clientHeight, 0.1, 100);
+    camera.position.set(9.8, 7.5, 11.5);
     camera.lookAt(0, 0, 0);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -447,39 +477,78 @@ function ContainerScene({ multiplier }) {
       sprite.position.set(x, y, z);
       sprite.scale.set(1.5, 0.38, 1);
       scene.add(sprite);
+      return sprite;
     };
 
-    const floorW = multiplier > 5 ? 11 : 7.8;
-    addBox(0, -0.08, 0, floorW, 0.12, 3.25, '#d8c89f');
-    addBox(0, 1.05, -1.72, floorW, 2.2, 0.05, '#d8c89f', 0.28);
-    addBox(-floorW / 2, 1.05, 0, 0.05, 2.2, 3.25, '#d8c89f', 0.22);
-    addBox(floorW / 2, 1.05, 0, 0.05, 2.2, 3.25, '#d8c89f', 0.22);
+    const addIngredientBadge = (item, x, y, z) => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 256;
+      canvas.height = 256;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = item.color;
+      ctx.beginPath();
+      ctx.arc(128, 112, 72, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#1a2421';
+      ctx.lineWidth = 8;
+      ctx.stroke();
+      ctx.fillStyle = '#1a2421';
+      ctx.font = item.short.length > 1 ? '800 44px Arial' : '900 76px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(item.short, 128, 130);
+      ctx.font = '700 24px Arial';
+      ctx.fillText(item.label, 128, 218);
+      const texture = new THREE.CanvasTexture(canvas);
+      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true }));
+      sprite.position.set(x, y, z);
+      sprite.scale.set(0.72, 0.72, 1);
+      scene.add(sprite);
+      return sprite;
+    };
 
-    addBox(-3.1, 0.55, -0.7, 1.05, 1.1, 1.45, '#243235');
-    addBox(-1.75, 0.42, 0.85, 1.2, 0.75, 0.9, '#c99f4f');
-    addBox(-0.35, 0.38, -0.85, 1.35, 0.75, 0.75, '#b45435');
-    addBox(1.25, 0.65, -0.85, 1.25, 1.3, 0.7, '#526169');
-    addBox(2.7, 0.42, 0.8, 1.05, 0.85, 1.25, '#6f805d');
-    addBox(3.45, 0.35, -0.65, 0.75, 0.7, 0.95, '#aeb7b6');
+    const floorW = multiplier > 5 ? 12.4 : 10.4;
+    addBox(0, -0.08, 0, floorW, 0.12, 3.6, '#d8c89f');
+    addBox(0, 1.05, -1.92, floorW, 2.35, 0.05, '#d8c89f', 0.28);
+    addBox(-floorW / 2, 1.05, 0, 0.05, 2.35, 3.6, '#d8c89f', 0.22);
+    addBox(floorW / 2, 1.05, 0, 0.05, 2.35, 3.6, '#d8c89f', 0.22);
+
+    const mixer = addBox(-3.45, 0.55, -0.7, 1.05, 1.1, 1.45, '#243235');
+    const mixerDrum = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.36, 0.78, 28), new THREE.MeshStandardMaterial({ color: '#f0e0b5', roughness: 0.82 }));
+    mixerDrum.rotation.x = Math.PI / 2;
+    mixerDrum.position.set(-3.45, 0.68, -0.7);
+    scene.add(mixerDrum);
+    addBox(-2.05, 0.42, 0.85, 1.2, 0.75, 0.9, '#c99f4f');
+    addBox(-0.45, 0.38, -0.85, 1.35, 0.75, 0.75, '#b45435');
+    addBox(1.35, 0.65, -0.85, 1.25, 1.3, 0.7, '#526169');
+    addBox(3.0, 0.42, 0.8, 1.05, 0.85, 1.25, '#6f805d');
+    addBox(4.0, 0.35, -0.65, 0.75, 0.7, 0.95, '#aeb7b6');
 
     for (let i = 0; i < Math.min(7, multiplier + 2); i += 1) {
-      addBox(-3.4 + i * 1.05, 0.22, 1.35, 0.48, 0.28, 0.58, '#caa15a');
+      addBox(-3.6 + i * 1.15, 0.22, 1.48, 0.48, 0.28, 0.58, '#caa15a');
     }
 
-    addLabel('MIX', -3.1, 1.55, -0.72);
-    addLabel('PROOF', -1.75, 1.25, 0.9);
-    addLabel('OVEN', -0.35, 1.22, -0.9);
-    addLabel('COOL', 1.25, 1.55, -0.9);
-    addLabel('SLICE', 2.7, 1.25, 0.85);
-    addLabel('BAG', 3.45, 1.05, -0.65);
+    addLabel('MIX', -3.45, 1.62, -0.72);
+    addLabel('PROOF', -2.05, 1.25, 0.9);
+    addLabel('OVEN', -0.45, 1.22, -0.9);
+    addLabel('COOL', 1.35, 1.55, -0.9);
+    addLabel('SLICE', 3.0, 1.25, 0.85);
+    addLabel('BAG', 4.0, 1.05, -0.65);
+    addLabel('INGREDIENT FEED', -4.75, 1.2, 0.9);
+
+    const ingredientSources = ingredientFeed.map((item, index) => ({
+      item,
+      start: new THREE.Vector3(-5.05, 0.72 + index * 0.03, -1.35 + index * 0.58),
+      end: new THREE.Vector3(-3.58, 0.9, -0.72),
+      badge: addIngredientBadge(item, -5.05, 0.72 + index * 0.03, -1.35 + index * 0.58)
+    }));
 
     const pathPoints = [
-      new THREE.Vector3(-3.1, 0.35, -0.1),
-      new THREE.Vector3(-1.75, 0.35, 0.75),
-      new THREE.Vector3(-0.35, 0.35, -0.55),
-      new THREE.Vector3(1.25, 0.35, -0.55),
-      new THREE.Vector3(2.65, 0.35, 0.65),
-      new THREE.Vector3(3.45, 0.35, -0.45)
+      new THREE.Vector3(-3.45, 0.35, -0.1),
+      new THREE.Vector3(-2.05, 0.35, 0.75),
+      new THREE.Vector3(-0.45, 0.35, -0.55),
+      new THREE.Vector3(1.35, 0.35, -0.55),
+      new THREE.Vector3(3.0, 0.35, 0.65),
+      new THREE.Vector3(4.0, 0.35, -0.45)
     ];
     const curve = new THREE.CatmullRomCurve3(pathPoints);
     const tube = new THREE.Mesh(
@@ -533,7 +602,16 @@ function ContainerScene({ multiplier }) {
         trayGroup.position.copy(pos);
         pulse.position.copy(curve.getPointAt((t + 0.08) % 1));
         pulse.scale.setScalar(1 + Math.sin(elapsed * 8) * 0.22);
-        scene.rotation.y = Math.sin(elapsed * 0.22) * 0.17;
+        mixer.rotation.y = Math.sin(elapsed * 5) * 0.03;
+        mixerDrum.rotation.z = elapsed * 2.8;
+        scene.rotation.y = Math.sin(elapsed * 0.18) * 0.12;
+        ingredientSources.forEach(({ start, end, badge }, index) => {
+          const feedT = (elapsed * 0.26 + index * 0.19) % 1;
+          const eased = feedT < 0.78 ? feedT / 0.78 : 0;
+          badge.position.lerpVectors(start, end, eased);
+          badge.position.y += Math.sin(feedT * Math.PI) * 0.28;
+          badge.material.opacity = feedT < 0.82 ? 1 : 0.25;
+        });
         armGroups.forEach((arm, index) => {
           arm.rotation.y = Math.sin(elapsed * 1.6 + index * 1.2) * 0.42;
           arm.rotation.z = Math.sin(elapsed * 1.15 + index) * 0.08;
@@ -569,9 +647,17 @@ function ContainerScene({ multiplier }) {
       <div className="sceneControls">
         <button onClick={() => setPlaying((current) => !current)}>{playing ? <Pause size={16} /> : <Play size={16} />}</button>
         <div>
-          <strong>{workflowStages[stageIndex].name}</strong>
+          <strong>{workflowStages[stageIndex].name} · {workflowStages[stageIndex].duration}</strong>
           <span>{workflowStages[stageIndex].detail}</span>
         </div>
+      </div>
+      <div className="stageTimeline">
+        {workflowStages.map((stage, index) => (
+          <div className={index === stageIndex ? 'current' : ''} key={stage.name}>
+            <b>{stage.name}</b>
+            <span>{stage.duration}</span>
+          </div>
+        ))}
       </div>
     </div>
   );
