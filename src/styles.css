@@ -553,7 +553,7 @@ td:last-child {
   color: #fff;
   display: grid;
   gap: 12px;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) minmax(220px, .42fr);
   margin-top: 12px;
   padding: 12px;
 }
@@ -578,6 +578,23 @@ td:last-child {
 .sceneControls span {
   color: #d6ded6;
   font-size: .9rem;
+}
+
+.phaseScrubber {
+  align-self: stretch;
+  display: grid;
+  gap: 7px;
+}
+
+.phaseScrubber span {
+  color: #fff;
+  font-size: .82rem;
+  font-weight: 800;
+}
+
+.phaseScrubber input {
+  accent-color: var(--robot);
+  width: 100%;
 }
 
 .stageTimeline,
@@ -705,6 +722,14 @@ footer {
     align-items: flex-start;
     flex-direction: column;
     gap: 12px;
+  }
+
+  .sceneControls {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .phaseScrubber {
+    grid-column: 1 / -1;
   }
 }
 

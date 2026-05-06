@@ -625,14 +625,20 @@ function Automation({ model, multiplier, setMultiplier, assumptions }) {
 function ContainerScene({ multiplier }) {
   const mount = useRef(null);
   const [playing, setPlaying] = useState(true);
+  const [phase, setPhase] = useState(0);
   const [stageIndex, setStageIndex] = useState(0);
   const [sceneError, setSceneError] = useState(false);
   const playingRef = useRef(playing);
+  const phaseRef = useRef(0);
   const stageRef = useRef(0);
 
   useEffect(() => {
     playingRef.current = playing;
   }, [playing]);
+
+  useEffect(() => {
+    phaseRef.current = phase;
+  }, [phase]);
 
   useEffect(() => {
     const el = mount.current;
@@ -860,35 +866,50 @@ function ContainerScene({ multiplier }) {
     });
 
     let raf;
+    let lastPhaseUiUpdate = 0;
+    let lastElapsed = 0;
     const startedAt = performance.now();
+    const applyPhase = (t, elapsed) => {
+      const pos = curve.getPointAt(t);
+      trayGroup.position.copy(pos);
+      pulse.position.copy(curve.getPointAt((t + 0.08) % 1));
+      pulse.scale.setScalar(1 + Math.sin(elapsed * 8) * 0.22);
+      mixer.rotation.y = Math.sin(elapsed * 5) * 0.03;
+      mixerDrum.rotation.z = elapsed * 2.8;
+      scene.rotation.y = Math.sin(elapsed * 0.18) * 0.12;
+      ingredientSources.forEach(({ start, end, badge }, index) => {
+        const feedT = (t * 1.6 + index * 0.19) % 1;
+        const eased = feedT < 0.78 ? feedT / 0.78 : 0;
+        badge.position.lerpVectors(start, end, eased);
+        badge.position.y += Math.sin(feedT * Math.PI) * 0.28;
+        badge.material.opacity = feedT < 0.82 ? 1 : 0.25;
+      });
+      armGroups.forEach((arm, index) => {
+        arm.rotation.y = Math.sin(t * Math.PI * 2 + index * 1.2) * 0.42;
+        arm.rotation.z = Math.sin(t * Math.PI * 1.6 + index) * 0.08;
+      });
+      const nextStage = Math.min(workflowStages.length - 1, Math.floor(t * workflowStages.length));
+      if (stageRef.current !== nextStage) {
+        stageRef.current = nextStage;
+        setStageIndex(nextStage);
+      }
+    };
+
     const animate = () => {
       const elapsed = (performance.now() - startedAt) / 1000;
+      const delta = Math.max(0, elapsed - lastElapsed);
+      lastElapsed = elapsed;
+      let t = phaseRef.current / 100;
       if (playingRef.current) {
-        const t = (elapsed * 0.08) % 1;
-        const pos = curve.getPointAt(t);
-        trayGroup.position.copy(pos);
-        pulse.position.copy(curve.getPointAt((t + 0.08) % 1));
-        pulse.scale.setScalar(1 + Math.sin(elapsed * 8) * 0.22);
-        mixer.rotation.y = Math.sin(elapsed * 5) * 0.03;
-        mixerDrum.rotation.z = elapsed * 2.8;
-        scene.rotation.y = Math.sin(elapsed * 0.18) * 0.12;
-        ingredientSources.forEach(({ start, end, badge }, index) => {
-          const feedT = (elapsed * 0.26 + index * 0.19) % 1;
-          const eased = feedT < 0.78 ? feedT / 0.78 : 0;
-          badge.position.lerpVectors(start, end, eased);
-          badge.position.y += Math.sin(feedT * Math.PI) * 0.28;
-          badge.material.opacity = feedT < 0.82 ? 1 : 0.25;
-        });
-        armGroups.forEach((arm, index) => {
-          arm.rotation.y = Math.sin(elapsed * 1.6 + index * 1.2) * 0.42;
-          arm.rotation.z = Math.sin(elapsed * 1.15 + index) * 0.08;
-        });
-        const nextStage = Math.min(workflowStages.length - 1, Math.floor(t * workflowStages.length));
-        if (stageRef.current !== nextStage) {
-          stageRef.current = nextStage;
-          setStageIndex(nextStage);
+        const nextPhase = (phaseRef.current + delta * 8) % 100;
+        phaseRef.current = nextPhase;
+        t = nextPhase / 100;
+        if (elapsed - lastPhaseUiUpdate > 0.1) {
+          setPhase(Math.round(nextPhase));
+          lastPhaseUiUpdate = elapsed;
         }
       }
+      applyPhase(t, elapsed);
       renderer.render(scene, camera);
       raf = requestAnimationFrame(animate);
     };
@@ -911,6 +932,13 @@ function ContainerScene({ multiplier }) {
     };
   }, [multiplier]);
 
+  const updatePhase = (value) => {
+    const nextPhase = clampNumber(value, 0, 0, 100);
+    phaseRef.current = nextPhase;
+    setPhase(nextPhase);
+    setPlaying(false);
+  };
+
   return (
     <div>
       <div className={`scene ${sceneError ? 'sceneFallback' : ''}`} ref={mount}>
@@ -927,6 +955,10 @@ function ContainerScene({ multiplier }) {
           <strong>{workflowStages[stageIndex].name} · {workflowStages[stageIndex].duration}</strong>
           <span>{workflowStages[stageIndex].detail}</span>
         </div>
+        <label className="phaseScrubber">
+          <span>Day loop {Math.round(phase)}%</span>
+          <input type="range" min="0" max="100" step="1" value={phase} onChange={(event) => updatePhase(event.target.value)} />
+        </label>
       </div>
       <div className="stageTimeline">
         {workflowStages.map((stage, index) => (
