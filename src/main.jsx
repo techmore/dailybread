@@ -7,16 +7,14 @@ import {
   CalendarDays,
   ChefHat,
   Factory,
-  Gauge,
   Layers3,
   PackageCheck,
+  Play,
+  Pause,
   RotateCcw,
   School,
   Scissors,
-  Timer,
-  Truck,
   Waves,
-  Zap
 } from 'lucide-react';
 import './styles.css';
 
@@ -24,18 +22,71 @@ const flourCostPerG = 11.34 / (12 * 453.592);
 const saltCostPerG = 3.39 / (53 * 28.3495);
 
 const recipes = {
-  artisan: { label: '650g sourdough loaf', doughG: 650, flourG: 360, waterG: 270, starterG: 70, saltG: 8, bakeMin: 38 },
-  sliced: { label: '750g sliced school loaf', doughG: 750, flourG: 420, waterG: 300, starterG: 80, saltG: 10, bakeMin: 42 }
+  artisan: { label: '650g sourdough loaf', flourG: 360, waterG: 270, starterG: 70, saltG: 8, bakeMin: 38 },
+  sliced: { label: '750g sliced school loaf', flourG: 420, waterG: 300, starterG: 80, saltG: 10, bakeMin: 42 }
 };
 
+const defaultAssumptions = {
+  electricityRate: 0.17,
+  laborRate: 22,
+  schoolSlicedPrice: 3.15,
+  schoolLoafPrice: 3.45,
+  retailSlicedPrice: 5.75,
+  retailLoafPrice: 6.5,
+  slicedBagCost: 0.18,
+  artisanBagCost: 0.11,
+  ovenCapacity: 18,
+  ovenKwhPerBatch: 3.2,
+  utilityKwhPerScale: 2.4,
+  dailyOverheadPerScale: 6,
+  cleaningBaseL: 18,
+  cleaningPerScaleL: 9,
+  cleaningCycleL: 12,
+  robotCleanHours: 4,
+  deckOvenCost: 6000,
+  robotArmCost: 799,
+  endEffectorsCost: 2400,
+  containerBuildoutCost: 22000,
+  mixerPackageCost: 18500,
+  controlsInstallCost: 14000
+};
+
+const workflowStages = [
+  { name: 'Mix', detail: 'Flour, starter, water, and salt enter the mixer.' },
+  { name: 'Proof', detail: 'Tubs move to controlled proofing racks.' },
+  { name: 'Load', detail: 'Robot arm loads deck trays into the steam oven.' },
+  { name: 'Bake', detail: 'Atlas decks bake 18 loaves per batch.' },
+  { name: 'Cool', detail: 'Finished loaves move to rack lanes.' },
+  { name: 'Slice and Bag', detail: 'School loaves are sliced, bagged, and staged.' },
+  { name: 'Clean', detail: 'Food-safe tools run a timed washdown cycle.' }
+];
+
 const formatMoney = (n) => n.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+const formatSmallMoney = (n) => n.toLocaleString(undefined, { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const format1 = (n) => n.toLocaleString(undefined, { maximumFractionDigits: 1 });
 
-function computeModel({ loaves, multiplier, school, sliced }) {
+function getEquipmentUnits(multiplier) {
+  return Math.max(1, Math.ceil(multiplier / 3));
+}
+
+function getEquipmentRows(multiplier, assumptions) {
+  const equipmentUnits = getEquipmentUnits(multiplier);
+  const ovenQty = Math.max(1, Math.ceil(multiplier / 4));
+
+  return [
+    ['Atlas Craft 3 steam deck oven', ovenQty, assumptions.deckOvenCost, 'Midpoint of $5k-$7k quote'],
+    ['Elephant Robotics mechArm Pi', 2 * equipmentUnits, assumptions.robotArmCost, 'Compact 6-axis arm reference'],
+    ['Food-safe grippers, peel/end effectors, guards', equipmentUnits, assumptions.endEffectorsCost, 'Robot tooling and guarding allowance'],
+    ['Insulated 20 ft container buildout', equipmentUnits, assumptions.containerBuildoutCost, 'Shell, paneling, HVAC, washable interior'],
+    ['Mixer, racks, slicer, bagger, sink package', equipmentUnits, assumptions.mixerPackageCost, 'Micro-bakery production package'],
+    ['Controls, sensors, drains, electrical install', equipmentUnits, assumptions.controlsInstallCost, 'Integration, safety, utility allowance']
+  ];
+}
+
+function computeModel({ loaves, multiplier, school, sliced, assumptions }) {
   const targetLoaves = loaves * multiplier;
   const recipe = sliced ? recipes.sliced : recipes.artisan;
-  const bakeCapacity = 18;
-  const batches = Math.ceil(targetLoaves / bakeCapacity);
+  const batches = Math.ceil(targetLoaves / assumptions.ovenCapacity);
   const bakeHours = (batches * recipe.bakeMin + 14 * batches) / 60;
   const flourKg = (recipe.flourG * targetLoaves) / 1000;
   const waterL = (recipe.waterG * targetLoaves) / 1000;
@@ -43,20 +94,46 @@ function computeModel({ loaves, multiplier, school, sliced }) {
   const saltKg = (recipe.saltG * targetLoaves) / 1000;
   const flourCost = recipe.flourG * targetLoaves * flourCostPerG;
   const saltCost = recipe.saltG * targetLoaves * saltCostPerG;
-  const electricityKwh = batches * 3.2 + 2.4 * multiplier;
-  const electricityCost = electricityKwh * 0.17;
-  const packagingCost = targetLoaves * (sliced ? 0.18 : 0.11);
-  const cleaningWater = 18 + multiplier * 9 + Math.ceil(bakeHours / 4) * 12;
+  const electricityKwh = batches * assumptions.ovenKwhPerBatch + assumptions.utilityKwhPerScale * multiplier;
+  const electricityCost = electricityKwh * assumptions.electricityRate;
+  const bagCost = sliced ? assumptions.slicedBagCost : assumptions.artisanBagCost;
+  const packagingCost = targetLoaves * bagCost;
+  const cleaningWater = assumptions.cleaningBaseL + multiplier * assumptions.cleaningPerScaleL + Math.ceil(bakeHours / assumptions.robotCleanHours) * assumptions.cleaningCycleL;
   const laborHours = school ? 1.8 + multiplier * 0.5 : 2.4 + multiplier * 0.7;
-  const laborCost = laborHours * 22;
-  const dailyCost = flourCost + saltCost + electricityCost + packagingCost + laborCost + 6 * multiplier;
+  const laborCost = laborHours * assumptions.laborRate;
+  const dailyCost = flourCost + saltCost + electricityCost + packagingCost + laborCost + assumptions.dailyOverheadPerScale * multiplier;
   const unitCost = dailyCost / targetLoaves;
-  const price = school ? (sliced ? 3.15 : 3.45) : (sliced ? 5.75 : 6.5);
+  const price = school ? (sliced ? assumptions.schoolSlicedPrice : assumptions.schoolLoafPrice) : (sliced ? assumptions.retailSlicedPrice : assumptions.retailLoafPrice);
   const revenue = price * targetLoaves * (school ? 5 : 1);
   const weeklyCost = dailyCost * (school ? 5 : 1);
   const gross = revenue - weeklyCost;
-  const ovenUtilization = Math.min(100, (targetLoaves / (batches * bakeCapacity)) * 100);
-  return { targetLoaves, recipe, batches, bakeHours, flourKg, waterL, starterKg, saltKg, flourCost, saltCost, electricityKwh, electricityCost, packagingCost, cleaningWater, laborHours, laborCost, dailyCost, unitCost, price, revenue, weeklyCost, gross, ovenUtilization };
+  const ovenUtilization = Math.min(100, (targetLoaves / (batches * assumptions.ovenCapacity)) * 100);
+
+  return {
+    targetLoaves,
+    recipe,
+    batches,
+    bakeHours,
+    flourKg,
+    waterL,
+    starterKg,
+    saltKg,
+    flourCost,
+    saltCost,
+    electricityKwh,
+    electricityCost,
+    packagingCost,
+    cleaningWater,
+    laborHours,
+    laborCost,
+    dailyCost,
+    unitCost,
+    price,
+    revenue,
+    weeklyCost,
+    gross,
+    ovenUtilization
+  };
 }
 
 function App() {
@@ -65,107 +142,583 @@ function App() {
   const [multiplier, setMultiplier] = useState(1);
   const [school, setSchool] = useState(true);
   const [sliced, setSliced] = useState(true);
-  const model = useMemo(() => computeModel({ loaves, multiplier, school, sliced }), [loaves, multiplier, school, sliced]);
+  const [assumptions, setAssumptions] = useState(defaultAssumptions);
+  const model = useMemo(() => computeModel({ loaves, multiplier, school, sliced, assumptions }), [loaves, multiplier, school, sliced, assumptions]);
 
   return (
     <main>
       <Nav page={page} setPage={setPage} />
       {page === 'overview' && <Overview model={model} setPage={setPage} />}
-      {page === 'model' && <Model model={model} loaves={loaves} setLoaves={setLoaves} multiplier={multiplier} setMultiplier={setMultiplier} school={school} setSchool={setSchool} sliced={sliced} setSliced={setSliced} />}
-      {page === 'automation' && <Automation model={model} multiplier={multiplier} setMultiplier={setMultiplier} />}
+      {page === 'model' && (
+        <Model
+          model={model}
+          loaves={loaves}
+          setLoaves={setLoaves}
+          multiplier={multiplier}
+          setMultiplier={setMultiplier}
+          school={school}
+          setSchool={setSchool}
+          sliced={sliced}
+          setSliced={setSliced}
+          assumptions={assumptions}
+          setAssumptions={setAssumptions}
+        />
+      )}
+      {page === 'automation' && <Automation model={model} multiplier={multiplier} setMultiplier={setMultiplier} assumptions={assumptions} />}
       <Footer />
     </main>
   );
 }
 
 function Nav({ page, setPage }) {
-  return <header className="nav"><button className="brand" onClick={() => setPage('overview')}><ChefHat size={22} /> DailyBread Pilot</button><nav>{[['overview','Project'],['model','Model'],['automation','Automation']].map(([id,label]) => <button className={page === id ? 'active' : ''} onClick={() => setPage(id)} key={id}>{label}</button>)}</nav></header>;
+  return (
+    <header className="nav">
+      <button className="brand" onClick={() => setPage('overview')}>
+        <ChefHat size={22} /> DailyBread Pilot
+      </button>
+      <nav>
+        {[
+          ['overview', 'Project'],
+          ['model', 'Model'],
+          ['automation', 'Automation']
+        ].map(([id, label]) => (
+          <button className={page === id ? 'active' : ''} onClick={() => setPage(id)} key={id}>
+            {label}
+          </button>
+        ))}
+      </nav>
+    </header>
+  );
 }
 
 function Overview({ model, setPage }) {
-  return <><section className="hero"><div className="heroText"><p className="eyebrow">From dough to cadence</p><h1>A practical operating model for daily sourdough production.</h1><p>Plan ingredients, baking time, oven capacity, cleaning cycles, school pricing, slicing, and container-scale automation from the same control surface.</p><div className="actions"><button onClick={() => setPage('model')}>Open calculator <ArrowRight size={18} /></button><button className="secondary" onClick={() => setPage('automation')}>View container model</button></div><div className="chips"><span>50 loaf lunch target</span><span>Atlas Craft 3 oven</span><span>School delivery mode</span></div></div><Dashboard model={model} /></section><section className="band"><h2>Baking work organized into a repeatable operating model.</h2><div className="grid3"><Feature icon={CalendarDays} title="Daily Production" text="Mix, bulk ferment, proof, bake, cool, slice, bag, and stage delivery against a lunch deadline." /><Feature icon={PackageCheck} title="Supply Ledger" text="Flour, salt, water, starter, bags, electricity, labor, and cleaning water scale with the loaf target." /><Feature icon={Factory} title="Automation Path" text="Compare 20 ft and 40 ft container layouts with robot handling, oven position, racks, sink, and staging zones." /></div></section></>;
+  return (
+    <>
+      <section className="hero">
+        <div className="heroText">
+          <p className="eyebrow">From dough to cadence</p>
+          <h1>A practical operating model for daily sourdough production.</h1>
+          <p>Plan ingredients, baking time, oven capacity, cleaning cycles, school pricing, slicing, and container-scale automation from the same control surface.</p>
+          <div className="actions">
+            <button onClick={() => setPage('model')}>
+              Open calculator <ArrowRight size={18} />
+            </button>
+            <button className="secondary" onClick={() => setPage('automation')}>
+              View container model
+            </button>
+          </div>
+          <div className="chips">
+            <span>50 loaf lunch target</span>
+            <span>Atlas Craft 3 oven</span>
+            <span>School delivery mode</span>
+          </div>
+        </div>
+        <Dashboard model={model} />
+      </section>
+      <section className="band">
+        <h2>Baking work organized into a repeatable operating model.</h2>
+        <div className="grid3">
+          <Feature icon={CalendarDays} title="Daily Production" text="Mix, bulk ferment, proof, bake, cool, slice, bag, and stage delivery against a lunch deadline." />
+          <Feature icon={PackageCheck} title="Supply Ledger" text="Flour, salt, water, starter, bags, electricity, labor, and cleaning water scale with the loaf target." />
+          <Feature icon={Factory} title="Automation Path" text="Compare 20 ft and 40 ft container layouts with robot handling, oven position, racks, sink, and staging zones." />
+        </div>
+      </section>
+    </>
+  );
 }
 
 function Dashboard({ model }) {
-  return <aside className="dash"><div className="dashHead"><span>Bakery cadence</span><b>Active</b></div><div className="big">{model.targetLoaves}</div><p>loaves planned</p><div className="metrics"><Metric label="Batches" value={model.batches} /><Metric label="Bake time" value={`${format1(model.bakeHours)}h`} /><Metric label="Unit cost" value={formatMoney(model.unitCost)} /><Metric label="Water" value={`${format1(model.waterL + model.cleaningWater)}L`} /></div></aside>;
+  return (
+    <aside className="dash">
+      <div className="dashHead">
+        <span>Bakery cadence</span>
+        <b>Active</b>
+      </div>
+      <div className="big">{model.targetLoaves}</div>
+      <p>loaves planned</p>
+      <div className="metrics">
+        <Metric label="Batches" value={model.batches} />
+        <Metric label="Bake time" value={`${format1(model.bakeHours)}h`} />
+        <Metric label="Unit cost" value={formatMoney(model.unitCost)} />
+        <Metric label="Water" value={`${format1(model.waterL + model.cleaningWater)}L`} />
+      </div>
+    </aside>
+  );
 }
 
 function Model(props) {
-  const { model, loaves, setLoaves, multiplier, setMultiplier, school, setSchool, sliced, setSliced } = props;
-  const rows = [['Flour', `${format1(model.flourKg)} kg`, formatMoney(model.flourCost)], ['Salt', `${format1(model.saltKg)} kg`, formatMoney(model.saltCost)], ['Starter', `${format1(model.starterKg)} kg`, 'tracked culture'], ['Dough water', `${format1(model.waterL)} L`, 'municipal'], ['Cleaning water', `${format1(model.cleaningWater)} L`, '4h robot washdown'], ['Electricity', `${format1(model.electricityKwh)} kWh`, formatMoney(model.electricityCost)], ['Packaging', `${model.targetLoaves} bags`, formatMoney(model.packagingCost)], ['Labor oversight', `${format1(model.laborHours)} h`, formatMoney(model.laborCost)]];
-  return <section className="page"><div className="pageHead"><p className="eyebrow">Spreadsheet logic</p><h1>Production, cost, and school delivery model.</h1></div><div className="modelLayout"><Panel title="Controls"><Control label="Base loaves" value={loaves} min="10" max="250" onChange={setLoaves} /><label>Scale multiplier</label><div className="segments">{[1,2,3,4,5,6,8,10].map(x => <button className={x === multiplier ? 'selected' : ''} onClick={() => setMultiplier(x)} key={x}>x{x}</button>)}</div><Toggle icon={School} label="Monday-Friday school pricing" value={school} setValue={setSchool} /><Toggle icon={Scissors} label="Sliced and bagged" value={sliced} setValue={setSliced} /></Panel><Panel title="Daily Output"><div className="kpiRow"><Metric label="Target" value={model.targetLoaves} /><Metric label="Oven batches" value={model.batches} /><Metric label="Bake window" value={`${format1(model.bakeHours)}h`} /><Metric label="Atlas fill" value={`${format1(model.ovenUtilization)}%`} /></div><table><tbody>{rows.map(r => <tr key={r[0]}><th>{r[0]}</th><td>{r[1]}</td><td>{r[2]}</td></tr>)}</tbody></table></Panel><Panel title="Financial Readout"><div className="finance"><Metric label={school ? 'Weekly revenue' : 'Daily revenue'} value={formatMoney(model.revenue)} /><Metric label={school ? 'Weekly cost' : 'Daily cost'} value={formatMoney(model.weeklyCost)} /><Metric label="Gross margin" value={formatMoney(model.gross)} /><Metric label="Cost per loaf" value={formatMoney(model.unitCost)} /></div><p className="note">Ingredient pricing uses King Arthur 12 lb bread flour at $11.34 and Morton 53 oz kosher salt at $3.39. Electricity is modeled at $0.17/kWh and should be replaced with the actual utility tariff.</p></Panel></div></section>;
+  const { model, loaves, setLoaves, multiplier, setMultiplier, school, setSchool, sliced, setSliced, assumptions, setAssumptions } = props;
+  const rows = [
+    ['Flour', `${format1(model.flourKg)} kg`, formatMoney(model.flourCost)],
+    ['Salt', `${format1(model.saltKg)} kg`, formatMoney(model.saltCost)],
+    ['Starter', `${format1(model.starterKg)} kg`, 'tracked culture'],
+    ['Dough water', `${format1(model.waterL)} L`, 'municipal'],
+    ['Cleaning water', `${format1(model.cleaningWater)} L`, `${assumptions.robotCleanHours}h robot washdown`],
+    ['Electricity', `${format1(model.electricityKwh)} kWh`, formatSmallMoney(model.electricityCost)],
+    ['Packaging', `${model.targetLoaves} bags`, formatMoney(model.packagingCost)],
+    ['Labor oversight', `${format1(model.laborHours)} h`, formatMoney(model.laborCost)]
+  ];
+
+  return (
+    <section className="page">
+      <div className="pageHead">
+        <p className="eyebrow">Spreadsheet logic</p>
+        <h1>Production, cost, and school delivery model.</h1>
+      </div>
+      <div className="modelLayout">
+        <Panel title="Controls">
+          <Control label="Base loaves" value={loaves} min="10" max="250" onChange={setLoaves} />
+          <label>Scale multiplier</label>
+          <div className="segments">
+            {[1, 2, 3, 4, 5, 6, 8, 10].map((x) => (
+              <button className={x === multiplier ? 'selected' : ''} onClick={() => setMultiplier(x)} key={x}>
+                x{x}
+              </button>
+            ))}
+          </div>
+          <Toggle icon={School} label="Monday-Friday school pricing" value={school} setValue={setSchool} />
+          <Toggle icon={Scissors} label="Sliced and bagged" value={sliced} setValue={setSliced} />
+        </Panel>
+        <Panel title="Daily Output">
+          <div className="kpiRow">
+            <Metric label="Target" value={model.targetLoaves} />
+            <Metric label="Oven batches" value={model.batches} />
+            <Metric label="Bake window" value={`${format1(model.bakeHours)}h`} />
+            <Metric label="Atlas fill" value={`${format1(model.ovenUtilization)}%`} />
+          </div>
+          <table>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r[0]}>
+                  <th>{r[0]}</th>
+                  <td>{r[1]}</td>
+                  <td>{r[2]}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Panel>
+        <Panel title="Financial Readout">
+          <div className="finance">
+            <Metric label={school ? 'Weekly revenue' : 'Daily revenue'} value={formatMoney(model.revenue)} />
+            <Metric label={school ? 'Weekly cost' : 'Daily cost'} value={formatMoney(model.weeklyCost)} />
+            <Metric label="Gross margin" value={formatMoney(model.gross)} />
+            <Metric label="Cost per loaf" value={formatSmallMoney(model.unitCost)} />
+          </div>
+          <p className="note">Ingredient pricing uses King Arthur 12 lb bread flour at $11.34 and Morton 53 oz kosher salt at $3.39. Utility, labor, packaging, oven, and robotics assumptions are editable below.</p>
+        </Panel>
+        <Panel title="Editable Assumptions">
+          <AssumptionEditor assumptions={assumptions} setAssumptions={setAssumptions} />
+        </Panel>
+      </div>
+    </section>
+  );
 }
 
-function Automation({ model, multiplier, setMultiplier }) {
+function AssumptionEditor({ assumptions, setAssumptions }) {
+  const update = (key, value) => setAssumptions((current) => ({ ...current, [key]: Number(value) }));
+  const fields = [
+    ['electricityRate', 'Electricity $/kWh', 0.01],
+    ['laborRate', 'Labor $/hr', 1],
+    ['schoolSlicedPrice', 'School sliced price', 0.05],
+    ['retailSlicedPrice', 'Retail sliced price', 0.05],
+    ['slicedBagCost', 'Sliced bag cost', 0.01],
+    ['ovenCapacity', 'Oven loaves/batch', 1],
+    ['ovenKwhPerBatch', 'Oven kWh/batch', 0.1],
+    ['robotCleanHours', 'Clean cycle hours', 0.5],
+    ['deckOvenCost', 'Atlas oven cost', 100],
+    ['robotArmCost', 'Robot arm cost', 25],
+    ['containerBuildoutCost', '20 ft buildout cost', 500],
+    ['controlsInstallCost', 'Controls/install cost', 500]
+  ];
+
+  return (
+    <div className="assumptionGrid">
+      {fields.map(([key, label, step]) => (
+        <NumberInput key={key} label={label} value={assumptions[key]} step={step} onChange={(value) => update(key, value)} />
+      ))}
+    </div>
+  );
+}
+
+function Automation({ model, multiplier, setMultiplier, assumptions }) {
   const containers = multiplier <= 2 ? 'One 20 ft container' : multiplier <= 5 ? 'Two 20 ft containers sharing oven/service spine' : 'One 40 ft container plus staging annex';
-  return <section className="page"><div className="pageHead"><p className="eyebrow">Automated concept</p><h1>Container bakery with robotic dough and oven handling.</h1></div><div className="autoGrid"><Panel title="3D Layout"><ContainerScene multiplier={multiplier} /><div className="segments wide">{[1,2,3,4,5,8].map(x => <button className={x === multiplier ? 'selected' : ''} onClick={() => setMultiplier(x)} key={x}>x{x}</button>)}</div></Panel><Panel title="Recommended Configuration"><div className="stack"><Metric label="Configuration" value={containers} /><Metric label="Lunch output" value={`${model.targetLoaves} loaves`} /><Metric label="Robot wash cycle" value="Every 4h" /><Metric label="Water use" value={`${format1(model.waterL + model.cleaningWater)} L/day`} /></div><CostTable multiplier={multiplier} /></Panel></div><Panel title="Purchase List and Pricing Assumptions"><PurchaseList model={model} multiplier={multiplier} /></Panel><section className="band slim"><h2>Automation modules</h2><div className="grid4"><Feature icon={Box} title="Mix and Bulk" text="Spiral mixer, dough tub lift, fermentation rack, flour bin, starter fridge." /><Feature icon={Layers3} title="Proof and Stage" text="Mobile rack lanes hold shaped loaves while the oven cycles through 18-loaf loads." /><Feature icon={RotateCcw} title="Robot Handling" text="Compact 6-axis arms move trays, score loaves, load decks, unload cooling racks, and enter cleaning mode." /><Feature icon={Waves} title="Steam and Clean" text="Steam deck oven, floor drain, spray bar, food-safe end effectors, and washdown schedule." /></div></section></section>;
+  const capex = getEquipmentRows(multiplier, assumptions).reduce((sum, [, qty, unit]) => sum + qty * unit, 0);
+
+  return (
+    <section className="page">
+      <div className="pageHead">
+        <p className="eyebrow">Automated concept</p>
+        <h1>Container bakery with robotic dough and oven handling.</h1>
+      </div>
+      <div className="pitchStrip">
+        <Metric label="Lunch output" value={`${model.targetLoaves} loaves`} />
+        <Metric label="Bake cycle" value={`${model.batches} batches`} />
+        <Metric label="Concept CAPEX" value={formatMoney(capex)} />
+        <Metric label="Water/day" value={`${format1(model.waterL + model.cleaningWater)} L`} />
+      </div>
+      <div className="autoGrid">
+        <Panel title="Animated Container Workflow">
+          <ContainerScene multiplier={multiplier} />
+          <div className="segments wide">
+            {[1, 2, 3, 4, 5, 8].map((x) => (
+              <button className={x === multiplier ? 'selected' : ''} onClick={() => setMultiplier(x)} key={x}>
+                x{x}
+              </button>
+            ))}
+          </div>
+        </Panel>
+        <Panel title="Recommended Configuration">
+          <div className="stack">
+            <Metric label="Configuration" value={containers} />
+            <Metric label="Robot wash cycle" value={`Every ${assumptions.robotCleanHours}h`} />
+            <Metric label="Unit cost" value={formatSmallMoney(model.unitCost)} />
+          </div>
+          <CostTable multiplier={multiplier} assumptions={assumptions} />
+        </Panel>
+      </div>
+      <Panel title="Purchase List and Pricing Assumptions">
+        <PurchaseList model={model} multiplier={multiplier} assumptions={assumptions} />
+      </Panel>
+      <section className="band slim">
+        <h2>Automation modules</h2>
+        <div className="grid4">
+          <Feature icon={Box} title="Mix and Bulk" text="Spiral mixer, dough tub lift, fermentation rack, flour bin, starter fridge." />
+          <Feature icon={Layers3} title="Proof and Stage" text="Mobile rack lanes hold shaped loaves while the oven cycles through 18-loaf loads." />
+          <Feature icon={RotateCcw} title="Robot Handling" text="Compact 6-axis arms move trays, score loaves, load decks, unload cooling racks, and enter cleaning mode." />
+          <Feature icon={Waves} title="Steam and Clean" text="Steam deck oven, floor drain, food-safe end effectors, and washdown schedule." />
+        </div>
+      </section>
+    </section>
+  );
 }
 
 function ContainerScene({ multiplier }) {
   const mount = useRef(null);
+  const [playing, setPlaying] = useState(true);
+  const [stageIndex, setStageIndex] = useState(0);
+  const playingRef = useRef(playing);
+  const stageRef = useRef(0);
+
+  useEffect(() => {
+    playingRef.current = playing;
+  }, [playing]);
+
   useEffect(() => {
     const el = mount.current;
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color('#f6f3eb');
-    const camera = new THREE.PerspectiveCamera(45, el.clientWidth / el.clientHeight, 0.1, 100);
-    camera.position.set(9, 7, 11);
+    scene.background = new THREE.Color('#f7f2e8');
+    const camera = new THREE.PerspectiveCamera(42, el.clientWidth / el.clientHeight, 0.1, 100);
+    camera.position.set(8.5, 6.8, 10);
     camera.lookAt(0, 0, 0);
+
     const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(el.clientWidth, el.clientHeight);
     el.appendChild(renderer.domElement);
-    scene.add(new THREE.HemisphereLight(0xffffff, 0x776655, 2.8));
-    const addBox = (x, y, z, w, h, d, color) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshStandardMaterial({ color, roughness: .7 })); m.position.set(x, y, z); scene.add(m); return m; };
-    addBox(0, -0.08, 0, multiplier > 5 ? 11 : 7.5, .12, 3.2, '#d9c9a7');
-    addBox(-2.4, .55, -0.7, 1.1, 1.1, 1.5, '#27313f');
-    addBox(-.7, .35, -.85, 1.6, .7, .7, '#b74d35');
-    addBox(1.4, .5, -.85, 1.4, 1, .6, '#51646f');
-    addBox(3.0, .45, -.7, .9, .9, 1.4, '#8b956d');
-    for (let i = 0; i < Math.min(6, multiplier + 1); i++) addBox(-3 + i * 1.15, .35, .95, .55, .7, .8, '#caa15a');
-    const armMat = new THREE.MeshStandardMaterial({ color: '#e8b54b', metalness: .2, roughness: .45 });
-    [-1.2, 1.9].forEach(x => { const base = new THREE.Mesh(new THREE.CylinderGeometry(.22, .28, .18), armMat); base.position.set(x, .18, .05); scene.add(base); const a = new THREE.Mesh(new THREE.BoxGeometry(.18, 1.1, .18), armMat); a.position.set(x, .78, .05); a.rotation.z = -.45; scene.add(a); const b = new THREE.Mesh(new THREE.BoxGeometry(.16, .9, .16), armMat); b.position.set(x + .42, 1.18, .05); b.rotation.z = .75; scene.add(b); });
-    let raf; const animate = () => { scene.rotation.y += 0.003; renderer.render(scene, camera); raf = requestAnimationFrame(animate); }; animate();
-    const resize = () => { renderer.setSize(el.clientWidth, el.clientHeight); camera.aspect = el.clientWidth / el.clientHeight; camera.updateProjectionMatrix(); };
+
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x7b6a52, 2.6));
+    const keyLight = new THREE.DirectionalLight(0xffffff, 1.4);
+    keyLight.position.set(4, 7, 5);
+    scene.add(keyLight);
+
+    const addBox = (x, y, z, w, h, d, color, opacity = 1) => {
+      const material = new THREE.MeshStandardMaterial({ color, roughness: 0.68, transparent: opacity < 1, opacity });
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
+      mesh.position.set(x, y, z);
+      scene.add(mesh);
+      return mesh;
+    };
+
+    const addLabel = (text, x, y, z) => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 512;
+      canvas.height = 128;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = 'rgba(27, 34, 31, 0.88)';
+      ctx.roundRect(18, 18, 476, 78, 18);
+      ctx.fill();
+      ctx.fillStyle = '#fffaf0';
+      ctx.font = '700 42px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(text, 256, 70);
+      const texture = new THREE.CanvasTexture(canvas);
+      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true }));
+      sprite.position.set(x, y, z);
+      sprite.scale.set(1.5, 0.38, 1);
+      scene.add(sprite);
+    };
+
+    const floorW = multiplier > 5 ? 11 : 7.8;
+    addBox(0, -0.08, 0, floorW, 0.12, 3.25, '#d8c89f');
+    addBox(0, 1.05, -1.72, floorW, 2.2, 0.05, '#d8c89f', 0.28);
+    addBox(-floorW / 2, 1.05, 0, 0.05, 2.2, 3.25, '#d8c89f', 0.22);
+    addBox(floorW / 2, 1.05, 0, 0.05, 2.2, 3.25, '#d8c89f', 0.22);
+
+    addBox(-3.1, 0.55, -0.7, 1.05, 1.1, 1.45, '#243235');
+    addBox(-1.75, 0.42, 0.85, 1.2, 0.75, 0.9, '#c99f4f');
+    addBox(-0.35, 0.38, -0.85, 1.35, 0.75, 0.75, '#b45435');
+    addBox(1.25, 0.65, -0.85, 1.25, 1.3, 0.7, '#526169');
+    addBox(2.7, 0.42, 0.8, 1.05, 0.85, 1.25, '#6f805d');
+    addBox(3.45, 0.35, -0.65, 0.75, 0.7, 0.95, '#aeb7b6');
+
+    for (let i = 0; i < Math.min(7, multiplier + 2); i += 1) {
+      addBox(-3.4 + i * 1.05, 0.22, 1.35, 0.48, 0.28, 0.58, '#caa15a');
+    }
+
+    addLabel('MIX', -3.1, 1.55, -0.72);
+    addLabel('PROOF', -1.75, 1.25, 0.9);
+    addLabel('OVEN', -0.35, 1.22, -0.9);
+    addLabel('COOL', 1.25, 1.55, -0.9);
+    addLabel('SLICE', 2.7, 1.25, 0.85);
+    addLabel('BAG', 3.45, 1.05, -0.65);
+
+    const pathPoints = [
+      new THREE.Vector3(-3.1, 0.35, -0.1),
+      new THREE.Vector3(-1.75, 0.35, 0.75),
+      new THREE.Vector3(-0.35, 0.35, -0.55),
+      new THREE.Vector3(1.25, 0.35, -0.55),
+      new THREE.Vector3(2.65, 0.35, 0.65),
+      new THREE.Vector3(3.45, 0.35, -0.45)
+    ];
+    const curve = new THREE.CatmullRomCurve3(pathPoints);
+    const tube = new THREE.Mesh(
+      new THREE.TubeGeometry(curve, 80, 0.025, 8),
+      new THREE.MeshStandardMaterial({ color: '#8fa765', emissive: '#314200', emissiveIntensity: 0.15 })
+    );
+    scene.add(tube);
+
+    const trayGroup = new THREE.Group();
+    const trayBase = new THREE.Mesh(
+      new THREE.BoxGeometry(0.58, 0.08, 0.34),
+      new THREE.MeshStandardMaterial({ color: '#9b6b38', roughness: 0.68 })
+    );
+    trayGroup.add(trayBase);
+    for (let i = 0; i < 3; i += 1) {
+      const loaf = new THREE.Mesh(new THREE.SphereGeometry(0.11, 20, 12), new THREE.MeshStandardMaterial({ color: '#c9823b', roughness: 0.9 }));
+      loaf.scale.set(1.35, 0.55, 0.8);
+      loaf.position.set(-0.2 + i * 0.2, 0.12, 0);
+      trayGroup.add(loaf);
+    }
+    scene.add(trayGroup);
+
+    const pulse = new THREE.Mesh(new THREE.SphereGeometry(0.08, 20, 20), new THREE.MeshStandardMaterial({ color: '#e2b84f', emissive: '#c88e17', emissiveIntensity: 0.7 }));
+    scene.add(pulse);
+
+    const armGroups = [-0.95, 1.8].map((x) => {
+      const group = new THREE.Group();
+      group.position.set(x, 0.12, 0.05);
+      const mat = new THREE.MeshStandardMaterial({ color: '#e0ad3f', metalness: 0.25, roughness: 0.42 });
+      const base = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.28, 0.18), mat);
+      group.add(base);
+      const lower = new THREE.Mesh(new THREE.BoxGeometry(0.16, 1.05, 0.16), mat);
+      lower.position.set(0.24, 0.55, 0);
+      lower.rotation.z = -0.45;
+      group.add(lower);
+      const upper = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.85, 0.14), mat);
+      upper.position.set(0.62, 0.92, 0);
+      upper.rotation.z = 0.7;
+      group.add(upper);
+      scene.add(group);
+      return group;
+    });
+
+    let raf;
+    const clock = new THREE.Clock();
+    const animate = () => {
+      const elapsed = clock.getElapsedTime();
+      if (playingRef.current) {
+        const t = (elapsed * 0.08) % 1;
+        const pos = curve.getPointAt(t);
+        trayGroup.position.copy(pos);
+        pulse.position.copy(curve.getPointAt((t + 0.08) % 1));
+        pulse.scale.setScalar(1 + Math.sin(elapsed * 8) * 0.22);
+        scene.rotation.y = Math.sin(elapsed * 0.22) * 0.17;
+        armGroups.forEach((arm, index) => {
+          arm.rotation.y = Math.sin(elapsed * 1.6 + index * 1.2) * 0.42;
+          arm.rotation.z = Math.sin(elapsed * 1.15 + index) * 0.08;
+        });
+        const nextStage = Math.min(workflowStages.length - 1, Math.floor(t * workflowStages.length));
+        if (stageRef.current !== nextStage) {
+          stageRef.current = nextStage;
+          setStageIndex(nextStage);
+        }
+      }
+      renderer.render(scene, camera);
+      raf = requestAnimationFrame(animate);
+    };
+    animate();
+
+    const resize = () => {
+      renderer.setSize(el.clientWidth, el.clientHeight);
+      camera.aspect = el.clientWidth / el.clientHeight;
+      camera.updateProjectionMatrix();
+    };
     window.addEventListener('resize', resize);
-    return () => { cancelAnimationFrame(raf); window.removeEventListener('resize', resize); renderer.dispose(); el.innerHTML = ''; };
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('resize', resize);
+      renderer.dispose();
+      el.innerHTML = '';
+    };
   }, [multiplier]);
-  return <div className="scene" ref={mount} />;
+
+  return (
+    <div>
+      <div className="scene" ref={mount} />
+      <div className="sceneControls">
+        <button onClick={() => setPlaying((current) => !current)}>{playing ? <Pause size={16} /> : <Play size={16} />}</button>
+        <div>
+          <strong>{workflowStages[stageIndex].name}</strong>
+          <span>{workflowStages[stageIndex].detail}</span>
+        </div>
+      </div>
+    </div>
+  );
 }
 
-function CostTable({ multiplier }) {
-  const capex = [['Atlas Craft 3 deck oven', 6000], ['Two compact 6-axis robot arms', 799 * 2], ['Food-safe end effectors and guards', 2400], ['20 ft insulated container buildout', 22000 * Math.max(1, Math.ceil(multiplier / 3))], ['Mixer, racks, slicer, bagger, sinks', 18500], ['Controls, sensors, drains, install', 14000]];
-  const total = capex.reduce((s, x) => s + x[1], 0);
-  return <table><tbody>{capex.map(([name, cost]) => <tr key={name}><th>{name}</th><td>{formatMoney(cost)}</td></tr>)}<tr className="total"><th>Concept CAPEX</th><td>{formatMoney(total)}</td></tr></tbody></table>;
+function CostTable({ multiplier, assumptions }) {
+  const rows = getEquipmentRows(multiplier, assumptions);
+  const total = rows.reduce((sum, [, qty, unit]) => sum + qty * unit, 0);
+  return (
+    <table>
+      <tbody>
+        {rows.map(([name, qty, unit]) => (
+          <tr key={name}>
+            <th>{name}</th>
+            <td>{formatMoney(qty * unit)}</td>
+          </tr>
+        ))}
+        <tr className="total">
+          <th>Concept CAPEX</th>
+          <td>{formatMoney(total)}</td>
+        </tr>
+      </tbody>
+    </table>
+  );
 }
 
-function PurchaseList({ model, multiplier }) {
-  const equipmentUnits = Math.max(1, Math.ceil(multiplier / 3));
+function PurchaseList({ model, multiplier, assumptions }) {
   const supplies = [
     ['King Arthur bread flour, 12 lb bag', Math.ceil((model.flourKg * 2.20462) / 12), 11.34, 'User-provided current price'],
     ['Morton coarse kosher salt, 53 oz', Math.ceil((model.saltKg * 35.274) / 53), 3.39, 'User-provided current price'],
-    ['Bread bags / sliced loaf bags', model.targetLoaves, model.recipe.label.includes('sliced') ? 0.18 : 0.11, 'Estimated consumable'],
-    ['Electricity allowance', Math.ceil(model.electricityKwh), 0.17, 'Replace with utility tariff']
+    ['Bread bags / sliced loaf bags', model.targetLoaves, model.recipe.label.includes('sliced') ? assumptions.slicedBagCost : assumptions.artisanBagCost, 'Editable consumable'],
+    ['Electricity allowance', Math.ceil(model.electricityKwh), assumptions.electricityRate, 'Editable utility rate']
   ];
-  const equipment = [
-    ['Atlas Craft 3 steam deck oven', 1, 6000, 'Midpoint of $5k-$7k quote'],
-    ['Elephant Robotics mechArm Pi', 2 * equipmentUnits, 799, 'Compact 6-axis arm reference'],
-    ['Food-safe grippers, peel/end effectors, guards', 1 * equipmentUnits, 2400, 'Concept allowance'],
-    ['Insulated 20 ft container buildout', equipmentUnits, 22000, 'Shell, paneling, HVAC allowance'],
-    ['Mixer, racks, slicer, bagger, sink package', 1 * equipmentUnits, 18500, 'Micro-bakery package estimate'],
-    ['Controls, sensors, drains, electrical install', 1 * equipmentUnits, 14000, 'Integration allowance']
-  ];
-  return <div className="purchaseGrid"><PurchaseTable title="Daily Consumables" rows={supplies} /><PurchaseTable title="Automation Equipment" rows={equipment} /></div>;
+  const equipment = getEquipmentRows(multiplier, assumptions);
+  return (
+    <div className="purchaseGrid">
+      <PurchaseTable title="Daily Consumables" rows={supplies} />
+      <PurchaseTable title="Automation Equipment" rows={equipment} />
+    </div>
+  );
 }
 
 function PurchaseTable({ title, rows }) {
   const total = rows.reduce((sum, [, qty, unit]) => sum + qty * unit, 0);
-  return <div><h3>{title}</h3><table><thead><tr><th>Item</th><th>Qty</th><th>Unit</th><th>Subtotal</th><th>Note</th></tr></thead><tbody>{rows.map(([item, qty, unit, note]) => <tr key={item}><th>{item}</th><td>{qty}</td><td>{formatMoney(unit)}</td><td>{formatMoney(qty * unit)}</td><td>{note}</td></tr>)}<tr className="total"><th>Total</th><td></td><td></td><td>{formatMoney(total)}</td><td></td></tr></tbody></table></div>;
+  return (
+    <div>
+      <h3>{title}</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Item</th>
+            <th>Qty</th>
+            <th>Unit</th>
+            <th>Subtotal</th>
+            <th>Note</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(([item, qty, unit, note]) => (
+            <tr key={item}>
+              <th>{item}</th>
+              <td>{qty}</td>
+              <td>{formatMoney(unit)}</td>
+              <td>{formatMoney(qty * unit)}</td>
+              <td>{note}</td>
+            </tr>
+          ))}
+          <tr className="total">
+            <th>Total</th>
+            <td></td>
+            <td></td>
+            <td>{formatMoney(total)}</td>
+            <td></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
-function Panel({ title, children }) { return <section className="panel"><h2>{title}</h2>{children}</section>; }
-function Feature({ icon: Icon, title, text }) { return <article className="feature"><Icon size={24} /><h3>{title}</h3><p>{text}</p></article>; }
-function Metric({ label, value }) { return <div className="metric"><span>{label}</span><strong>{value}</strong></div>; }
-function Control({ label, value, min, max, onChange }) { return <div><label>{label}</label><input type="range" min={min} max={max} value={value} onChange={e => onChange(Number(e.target.value))} /><b>{value}</b></div>; }
-function Toggle({ icon: Icon, label, value, setValue }) { return <button className={`toggle ${value ? 'on' : ''}`} onClick={() => setValue(!value)}><Icon size={18} />{label}<span>{value ? 'On' : 'Off'}</span></button>; }
-function Footer() { return <footer><b>DailyBread Pilot</b><span>Concept model for planning only. Validate with local code, health department, fire, electrical, and food safety requirements before purchasing equipment.</span></footer>; }
+function Panel({ title, children }) {
+  return (
+    <section className="panel">
+      <h2>{title}</h2>
+      {children}
+    </section>
+  );
+}
 
-createRoot(document.getElementById('root')).render(<App />);
+function Feature({ icon: Icon, title, text }) {
+  return (
+    <article className="feature">
+      <Icon size={24} />
+      <h3>{title}</h3>
+      <p>{text}</p>
+    </article>
+  );
+}
+
+function Metric({ label, value }) {
+  return (
+    <div className="metric">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function Control({ label, value, min, max, onChange }) {
+  return (
+    <div>
+      <label>{label}</label>
+      <input type="range" min={min} max={max} value={value} onChange={(e) => onChange(Number(e.target.value))} />
+      <b>{value}</b>
+    </div>
+  );
+}
+
+function NumberInput({ label, value, step, onChange }) {
+  return (
+    <label className="numberInput">
+      <span>{label}</span>
+      <input type="number" min="0" step={step} value={value} onChange={(e) => onChange(e.target.value)} />
+    </label>
+  );
+}
+
+function Toggle({ icon: Icon, label, value, setValue }) {
+  return (
+    <button className={`toggle ${value ? 'on' : ''}`} onClick={() => setValue(!value)}>
+      <Icon size={18} />
+      {label}
+      <span>{value ? 'On' : 'Off'}</span>
+    </button>
+  );
+}
+
+function Footer() {
+  return (
+    <footer>
+      <b>DailyBread Pilot</b>
+      <span>Concept model for planning only. Validate with local code, health department, fire, electrical, and food safety requirements before purchasing equipment.</span>
+    </footer>
+  );
+}
+
+const rootElement = document.getElementById('root');
+const root = window.__dailybreadRoot ?? createRoot(rootElement);
+window.__dailybreadRoot = root;
+root.render(<App />);
