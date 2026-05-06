@@ -521,7 +521,9 @@ td:last-child {
 }
 
 .homeShowcase .scene {
-  min-height: 600px;
+  aspect-ratio: auto;
+  min-height: 1100px;
+  width: 100%;
 }
 
 .homeControls {
@@ -840,6 +842,10 @@ footer {
 
   .workflowShowcase .scene {
     min-height: 360px;
+  }
+
+  .homeShowcase .scene {
+    min-height: 720px;
   }
 
   footer {

@@ -1016,11 +1016,17 @@ function HomeBreadScene({ model, schedule }) {
     const el = mount.current;
     const scene = new THREE.Scene();
     scene.background = new THREE.Color('#f7f2e8');
-    scene.position.x = -1.08;
+    scene.position.x = -0.36;
     const camera = new THREE.PerspectiveCamera(45, el.clientWidth / el.clientHeight, 0.1, 100);
-    const cameraTarget = new THREE.Vector3(0.62, 0.58, 0);
-    camera.position.set(0.72, 3.35, 10.15);
-    camera.lookAt(cameraTarget);
+    const cameraTarget = new THREE.Vector3(0.12, 0.62, 0);
+    const positionCamera = () => {
+      const aspect = el.clientWidth / Math.max(1, el.clientHeight);
+      const z = aspect < 0.75 ? 12.4 : aspect < 1 ? 10.4 : aspect < 1.35 ? 7.8 : 6.9;
+      const y = aspect < 0.75 ? 3.75 : 3.3;
+      camera.position.set(0.34, y, z);
+      camera.lookAt(cameraTarget);
+    };
+    positionCamera();
 
     const rendererCanvas = document.createElement('canvas');
     const contextOptions = { antialias: true };
@@ -1369,7 +1375,7 @@ function HomeBreadScene({ model, schedule }) {
       renderer.setSize(el.clientWidth, el.clientHeight);
       camera.aspect = el.clientWidth / el.clientHeight;
       camera.updateProjectionMatrix();
-      camera.lookAt(cameraTarget);
+      positionCamera();
     };
     window.addEventListener('resize', resize);
     return () => {
