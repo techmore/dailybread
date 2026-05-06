@@ -2779,38 +2779,130 @@ function ContainerScene({ model, multiplier, schedule }) {
     const pulse = new THREE.Mesh(new THREE.SphereGeometry(0.08, 20, 20), new THREE.MeshStandardMaterial({ color: '#e2b84f', emissive: '#c88e17', emissiveIntensity: 0.7 }));
     scene.add(pulse);
 
-    const armGroups = robotArmPositions.map((x) => {
+    const armGroups = robotArmPositions.map((x, armIndex) => {
       const group = new THREE.Group();
       group.position.set(x, 0.12, 0.05);
-      const mat = new THREE.MeshStandardMaterial({ color: '#e0ad3f', metalness: 0.25, roughness: 0.42 });
-      const base = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.28, 0.18), mat);
-      group.add(base);
-      const lower = new THREE.Mesh(new THREE.BoxGeometry(0.16, 1.05, 0.16), mat);
-      lower.position.set(0.24, 0.55, 0);
-      lower.rotation.z = -0.45;
-      group.add(lower);
-      const upper = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.85, 0.14), mat);
-      upper.position.set(0.62, 0.92, 0);
-      upper.rotation.z = 0.7;
-      group.add(upper);
-      const wrist = new THREE.Mesh(new THREE.SphereGeometry(0.11, 18, 12), mat);
-      wrist.position.set(0.86, 1.22, 0);
-      group.add(wrist);
-      const gripper = new THREE.Group();
-      gripper.position.set(1.02, 1.24, 0);
-      const palm = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.06, 0.12), mat);
-      gripper.add(palm);
-      [-0.07, 0.07].forEach((offsetZ) => {
-        const finger = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.035, 0.035), mat);
-        finger.position.set(0.13, -0.04, offsetZ);
-        gripper.add(finger);
+      const mat = new THREE.MeshStandardMaterial({ color: '#e0ad3f', metalness: 0.32, roughness: 0.36 });
+      const jointMat = new THREE.MeshStandardMaterial({ color: '#596a70', metalness: 0.45, roughness: 0.28 });
+      const cableMat = new THREE.MeshStandardMaterial({ color: '#263330', metalness: 0.18, roughness: 0.42 });
+      const toolMat = new THREE.MeshStandardMaterial({ color: '#d8d1c2', metalness: 0.5, roughness: 0.25 });
+      const makeMesh = (geometry, material) => {
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        return mesh;
+      };
+      const addLocalCylinder = (parent, radius, height, material, position, rotation = [0, 0, 0], radialSegments = 32) => {
+        const mesh = makeMesh(new THREE.CylinderGeometry(radius, radius, height, radialSegments), material);
+        mesh.position.set(...position);
+        mesh.rotation.set(...rotation);
+        parent.add(mesh);
+        return mesh;
+      };
+      const addLocalBox = (parent, size, material, position, rotation = [0, 0, 0]) => {
+        const mesh = makeMesh(new THREE.BoxGeometry(...size), material);
+        mesh.position.set(...position);
+        mesh.rotation.set(...rotation);
+        parent.add(mesh);
+        return mesh;
+      };
+
+      const base = addLocalCylinder(group, 0.23, 0.14, jointMat, [0, 0.07, 0]);
+      const turntable = addLocalCylinder(group, 0.18, 0.1, mat, [0, 0.18, 0]);
+      const baseRing = makeMesh(new THREE.TorusGeometry(0.21, 0.018, 8, 40), toolMat);
+      baseRing.position.set(0, 0.24, 0);
+      baseRing.rotation.x = Math.PI / 2;
+      group.add(baseRing);
+
+      const shoulder = new THREE.Group();
+      shoulder.position.set(0, 0.28, 0);
+      group.add(shoulder);
+      addLocalCylinder(shoulder, 0.13, 0.32, jointMat, [0, 0, 0], [Math.PI / 2, 0, 0]);
+      addLocalCylinder(shoulder, 0.095, 0.2, mat, [0.02, 0.02, 0], [Math.PI / 2, 0, 0]);
+
+      const lowerLink = new THREE.Group();
+      shoulder.add(lowerLink);
+      [-0.055, 0.055].forEach((offsetZ) => {
+        addLocalCylinder(lowerLink, 0.038, 0.78, mat, [0, 0.39, offsetZ]);
       });
-      group.add(gripper);
+      addLocalBox(lowerLink, [0.13, 0.16, 0.22], mat, [0, 0.36, 0]);
+      addLocalBox(lowerLink, [0.06, 0.76, 0.035], cableMat, [-0.09, 0.39, -0.09]);
+
+      const elbow = new THREE.Group();
+      elbow.position.set(0, 0.78, 0);
+      lowerLink.add(elbow);
+      addLocalCylinder(elbow, 0.12, 0.3, jointMat, [0, 0, 0], [Math.PI / 2, 0, 0]);
+      addLocalCylinder(elbow, 0.078, 0.2, mat, [0.015, 0, 0], [Math.PI / 2, 0, 0]);
+
+      const upperLink = new THREE.Group();
+      elbow.add(upperLink);
+      [-0.045, 0.045].forEach((offsetZ) => {
+        addLocalCylinder(upperLink, 0.032, 0.62, mat, [0, 0.31, offsetZ]);
+      });
+      addLocalBox(upperLink, [0.1, 0.12, 0.18], mat, [0, 0.28, 0]);
+      addLocalBox(upperLink, [0.048, 0.58, 0.03], cableMat, [-0.075, 0.31, -0.075]);
+
+      const wristPitch = new THREE.Group();
+      wristPitch.position.set(0, 0.62, 0);
+      upperLink.add(wristPitch);
+      addLocalCylinder(wristPitch, 0.09, 0.22, jointMat, [0, 0, 0], [Math.PI / 2, 0, 0], 28);
+
+      const wristRoll = new THREE.Group();
+      wristRoll.position.set(0, 0.18, 0);
+      wristPitch.add(wristRoll);
+      addLocalCylinder(wristRoll, 0.062, 0.24, mat, [0, 0, 0], [0, 0, Math.PI / 2], 28);
+      addLocalCylinder(wristRoll, 0.05, 0.18, jointMat, [0, 0.13, 0], [0, 0, Math.PI / 2], 24);
+
+      const toolYaw = new THREE.Group();
+      toolYaw.position.set(0, 0.24, 0);
+      wristRoll.add(toolYaw);
+      addLocalCylinder(toolYaw, 0.05, 0.12, toolMat, [0, 0, 0], [0, 0, Math.PI / 2], 24);
+      const gripper = new THREE.Group();
+      gripper.position.set(0, 0.11, 0);
+      toolYaw.add(gripper);
+      addLocalBox(gripper, [0.2, 0.055, 0.14], toolMat, [0, 0, 0]);
+      const fingers = [-1, 1].map((side) => {
+        const finger = new THREE.Group();
+        finger.position.set(0.08, -0.035, side * 0.07);
+        addLocalCylinder(finger, 0.02, 0.05, jointMat, [0, 0, 0], [Math.PI / 2, 0, 0], 16);
+        addLocalBox(finger, [0.16, 0.032, 0.028], toolMat, [0.1, -0.02, side * 0.014], [0, 0, side * 0.12]);
+        gripper.add(finger);
+        return { finger, side };
+      });
+
+      const jointBadges = [
+        ['J1', -0.24, 0.28, 0.15],
+        ['J2', -0.18, 0.46, 0.15],
+        ['J3', -0.12, 0.98, 0.15],
+        ['J4-6', -0.06, 1.28, 0.15]
+      ].map(([label, bx, by, bz]) => {
+        const badge = addTextPanel(label, x + bx, group.position.y + by, group.position.z + bz, 0.18, 0.07, '#263330', '#fffaf0');
+        badge.material.opacity = 0.72;
+        badge.userData = { baseY: badge.position.y };
+        return badge;
+      });
+
       scene.add(group);
-      return { group, lower, upper, wrist, gripper };
+      return {
+        group,
+        base,
+        turntable,
+        shoulder,
+        elbow,
+        wristPitch,
+        wristRoll,
+        toolYaw,
+        gripper,
+        fingers,
+        jointBadges,
+        lower: shoulder,
+        upper: elbow,
+        wrist: wristRoll,
+        phaseOffset: armIndex * 0.9
+      };
     });
-    addSmallLabel('ARM A: dough handling', -0.95, 1.55, 0.24, '#d9a73a');
-    addSmallLabel('ARM B: oven + packout', 1.8, 1.55, 0.24, '#d9a73a');
+    addSmallLabel('6-AXIS ARM A: dough handling', -0.95, 1.55, 0.24, '#d9a73a');
+    addSmallLabel('6-AXIS ARM B: oven + packout', 1.8, 1.55, 0.24, '#d9a73a');
 
     let raf;
     let lastPhaseUiUpdate = 0;
@@ -2965,10 +3057,20 @@ function ContainerScene({ model, multiplier, schedule }) {
         const pose = poseSet[index] || poseSet[0];
         arm.group.rotation.y = pose.y + Math.sin(elapsed * 2 + index) * 0.04;
         arm.group.rotation.z = pose.z;
-        arm.lower.rotation.z = pose.lower;
-        arm.upper.rotation.z = pose.upper;
-        arm.wrist.rotation.y = elapsed * (stageId === 'clean' ? 1.8 : 0.8);
-        arm.gripper.rotation.z = (stageId === 'shape' || stageId === 'slice' ? Math.sin(elapsed * 5 + index) * 0.14 : 0);
+        arm.shoulder.rotation.z = pose.lower;
+        arm.elbow.rotation.z = pose.upper;
+        arm.wristPitch.rotation.z = (pose.wristPitch ?? -0.35) + Math.sin(elapsed * 2.4 + arm.phaseOffset) * 0.035;
+        arm.wristRoll.rotation.y = elapsed * (stageId === 'clean' ? 2.2 : 0.95) + arm.phaseOffset;
+        arm.toolYaw.rotation.z = (pose.toolYaw ?? 0) + (stageId === 'shape' || stageId === 'slice' ? Math.sin(elapsed * 5 + index) * 0.12 : 0);
+        arm.turntable.rotation.y = elapsed * 0.45 + index;
+        const clawOpen = stageId === 'clean' ? 0.09 : stageId === 'shape' || stageId === 'bake' || stageId === 'slice' ? 0.03 + Math.abs(Math.sin(elapsed * 4 + index)) * 0.025 : 0.06;
+        arm.fingers.forEach(({ finger, side }) => {
+          finger.position.z = side * clawOpen;
+          finger.rotation.y = side * (0.18 + clawOpen);
+        });
+        arm.jointBadges.forEach((badge, badgeIndex) => {
+          badge.position.y = badge.userData.baseY + Math.sin(elapsed * 2 + badgeIndex + index) * 0.006;
+        });
       });
       if (stageRef.current !== nextStage) {
         stageRef.current = nextStage;
