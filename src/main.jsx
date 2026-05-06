@@ -2030,10 +2030,17 @@ function ContainerScene({ model, multiplier, schedule }) {
     const el = mount.current;
     const scene = new THREE.Scene();
     scene.background = new THREE.Color('#f7f2e8');
-    const camera = new THREE.PerspectiveCamera(30, el.clientWidth / el.clientHeight, 0.1, 100);
-    const cameraTarget = new THREE.Vector3(0, 0.55, 0);
-    camera.position.set(6.8, 5.35, 8.05);
-    camera.lookAt(cameraTarget);
+    const camera = new THREE.PerspectiveCamera(32, el.clientWidth / el.clientHeight, 0.1, 100);
+    const cameraTarget = new THREE.Vector3(0, 0.72, 0);
+    const positionCamera = () => {
+      const aspect = el.clientWidth / Math.max(1, el.clientHeight);
+      const z = aspect < 0.75 ? 20.5 : aspect < 1 ? 16.8 : aspect < 1.45 ? 17.2 : 8.8;
+      const y = aspect < 0.75 ? 5.9 : aspect < 1 ? 5.45 : aspect < 1.45 ? 5.7 : 5.1;
+      const x = aspect < 0.75 ? 3.2 : aspect < 1 ? 4.2 : aspect < 1.45 ? 3.8 : 6.35;
+      camera.position.set(x, y, z);
+      camera.lookAt(cameraTarget);
+    };
+    positionCamera();
 
     const rendererCanvas = document.createElement('canvas');
     const contextOptions = { antialias: true };
@@ -2046,6 +2053,11 @@ function ContainerScene({ model, multiplier, schedule }) {
     let renderer;
     try {
       renderer = new THREE.WebGLRenderer({ canvas: rendererCanvas, context: webglContext, antialias: true });
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.04;
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
       setSceneError(false);
     } catch {
       setSceneError(true);
@@ -2058,14 +2070,96 @@ function ContainerScene({ model, multiplier, schedule }) {
     scene.add(new THREE.HemisphereLight(0xffffff, 0x7b6a52, 2.6));
     const keyLight = new THREE.DirectionalLight(0xffffff, 1.4);
     keyLight.position.set(4, 7, 5);
+    keyLight.castShadow = true;
+    keyLight.shadow.mapSize.set(1024, 1024);
     scene.add(keyLight);
 
     const addBox = (x, y, z, w, h, d, color, opacity = 1) => {
       const material = new THREE.MeshStandardMaterial({ color, roughness: 0.68, transparent: opacity < 1, opacity });
       const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
       mesh.position.set(x, y, z);
+      mesh.castShadow = opacity >= 0.55;
+      mesh.receiveShadow = true;
       scene.add(mesh);
       return mesh;
+    };
+
+    const addCylinder = (x, y, z, radius, height, color, opacity = 1) => {
+      const material = new THREE.MeshStandardMaterial({ color, roughness: 0.48, metalness: 0.12, transparent: opacity < 1, opacity });
+      const mesh = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, height, 32), material);
+      mesh.position.set(x, y, z);
+      mesh.castShadow = opacity >= 0.55;
+      mesh.receiveShadow = true;
+      scene.add(mesh);
+      return mesh;
+    };
+
+    const addRoundedBox = (x, y, z, w, h, d, color, radius = 0.06, options = {}) => {
+      const shape = new THREE.Shape();
+      const r = Math.min(radius, w / 2, h / 2);
+      shape.moveTo(-w / 2 + r, -h / 2);
+      shape.lineTo(w / 2 - r, -h / 2);
+      shape.quadraticCurveTo(w / 2, -h / 2, w / 2, -h / 2 + r);
+      shape.lineTo(w / 2, h / 2 - r);
+      shape.quadraticCurveTo(w / 2, h / 2, w / 2 - r, h / 2);
+      shape.lineTo(-w / 2 + r, h / 2);
+      shape.quadraticCurveTo(-w / 2, h / 2, -w / 2, h / 2 - r);
+      shape.lineTo(-w / 2, -h / 2 + r);
+      shape.quadraticCurveTo(-w / 2, -h / 2, -w / 2 + r, -h / 2);
+      const geometry = new THREE.ExtrudeGeometry(shape, {
+        depth: d,
+        bevelEnabled: true,
+        bevelThickness: options.bevelThickness ?? 0.025,
+        bevelSize: options.bevelSize ?? 0.025,
+        bevelSegments: options.bevelSegments ?? 4
+      });
+      geometry.translate(0, 0, -d / 2);
+      const material = new THREE.MeshStandardMaterial({
+        color,
+        roughness: options.roughness ?? 0.48,
+        metalness: options.metalness ?? 0.1,
+        transparent: (options.opacity ?? 1) < 1,
+        opacity: options.opacity ?? 1,
+        emissive: options.emissive ?? '#000000',
+        emissiveIntensity: options.emissiveIntensity ?? 0
+      });
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.position.set(x, y, z);
+      mesh.castShadow = (options.opacity ?? 1) >= 0.45;
+      mesh.receiveShadow = true;
+      scene.add(mesh);
+      return mesh;
+    };
+
+    const addTube = (points, color, radius = 0.014, opacity = 1) => {
+      const path = new THREE.CatmullRomCurve3(points.map((point) => new THREE.Vector3(...point)));
+      const mesh = new THREE.Mesh(
+        new THREE.TubeGeometry(path, 36, radius, 10),
+        new THREE.MeshStandardMaterial({ color, roughness: 0.38, metalness: 0.18, transparent: opacity < 1, opacity })
+      );
+      mesh.castShadow = opacity >= 0.55;
+      scene.add(mesh);
+      return mesh;
+    };
+
+    const addTextPanel = (text, x, y, z, w, h, fill = '#101817', ink = '#dfead1') => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 512;
+      canvas.height = 192;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = fill;
+      ctx.roundRect(18, 18, 476, 120, 22);
+      ctx.fill();
+      ctx.fillStyle = ink;
+      ctx.font = '800 42px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(text, 256, 88);
+      const texture = new THREE.CanvasTexture(canvas);
+      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true }));
+      sprite.position.set(x, y, z);
+      sprite.scale.set(w, h, 1);
+      scene.add(sprite);
+      return sprite;
     };
 
     const addLabel = (text, x, y, z) => {
@@ -2176,6 +2270,373 @@ function ContainerScene({ model, multiplier, schedule }) {
       return sprite;
     };
 
+    const createLoafGroup = (x, y, z, scale = [1.2, 0.52, 0.78], color = '#b96f35') => {
+      const group = new THREE.Group();
+      group.position.set(x, y, z);
+      const loaf = new THREE.Mesh(
+        new THREE.SphereGeometry(0.13, 24, 14),
+        new THREE.MeshStandardMaterial({ color, roughness: 0.88 })
+      );
+      loaf.scale.set(...scale);
+      loaf.castShadow = true;
+      loaf.receiveShadow = true;
+      group.add(loaf);
+      for (let i = 0; i < 3; i += 1) {
+        const score = new THREE.Mesh(
+          new THREE.BoxGeometry(0.075, 0.01, 0.012),
+          new THREE.MeshStandardMaterial({ color: '#f0d79f', roughness: 0.75 })
+        );
+        score.position.set(-0.08 + i * 0.08, 0.08, 0.03);
+        score.rotation.z = -0.35;
+        group.add(score);
+      }
+      scene.add(group);
+      return group;
+    };
+
+    const createMeteringMixerStation = () => {
+      const x = -3.45;
+      const z = -0.7;
+      addSmallLabel('1. ingredient metering', -4.65, 1.52, -1.3, '#203734');
+      addRoundedBox(-4.75, 0.28, -1.06, 1.0, 0.14, 1.52, '#596a70', 0.05, {
+        metalness: 0.14,
+        roughness: 0.42
+      });
+      const hopperSpecs = [
+        { label: 'FLOUR', color: '#efe3bf', x: -5.05, z: -1.42, end: [-3.72, 1.03, -0.82] },
+        { label: 'WATER', color: '#8fb3c7', x: -5.05, z: -0.94, end: [-3.48, 1.02, -0.73] },
+        { label: 'STARTER', color: '#d0a85c', x: -5.05, z: -0.46, end: [-3.35, 1.02, -0.63] },
+        { label: 'SALT', color: '#f7f7ef', x: -4.43, z: -1.18, end: [-3.22, 1.02, -0.62] }
+      ];
+      hopperSpecs.forEach((hopper) => {
+        addRoundedBox(hopper.x, 0.92, hopper.z, 0.28, 0.76, 0.34, hopper.color, 0.045, {
+          opacity: 0.72,
+          roughness: 0.2,
+          metalness: 0.02
+        });
+        addRoundedBox(hopper.x, 1.34, hopper.z, 0.34, 0.08, 0.4, '#d8d1c2', 0.02, {
+          metalness: 0.36,
+          roughness: 0.22
+        });
+        const funnel = new THREE.Mesh(
+          new THREE.ConeGeometry(0.18, 0.26, 4),
+          new THREE.MeshStandardMaterial({ color: hopper.color, roughness: 0.58, transparent: true, opacity: 0.86 })
+        );
+        funnel.position.set(hopper.x, 0.44, hopper.z);
+        funnel.rotation.y = Math.PI / 4;
+        funnel.castShadow = true;
+        scene.add(funnel);
+        addTextPanel(hopper.label, hopper.x, 0.94, hopper.z + 0.22, 0.34, 0.12, 'rgba(255,250,240,0.9)', '#203734');
+        addTube([[hopper.x, 0.48, hopper.z], [hopper.x + 0.32, 0.7, hopper.z], hopper.end], '#d8d1c2', 0.016, 0.82);
+      });
+
+      addSmallLabel('2. spiral mix + dough tub', x, 1.78, z, '#203734');
+      addRoundedBox(x, 0.26, z, 1.22, 0.18, 1.08, '#45585d', 0.06, {
+        metalness: 0.18,
+        roughness: 0.36
+      });
+      addRoundedBox(x - 0.48, 0.72, z + 0.08, 0.18, 0.74, 0.34, '#45585d', 0.055, {
+        metalness: 0.18,
+        roughness: 0.35
+      });
+      const head = addRoundedBox(x, 1.17, z - 0.04, 1.02, 0.28, 0.52, '#596a70', 0.095, {
+        metalness: 0.2,
+        roughness: 0.32
+      });
+      addRoundedBox(x + 0.37, 1.2, z + 0.25, 0.15, 0.075, 0.04, '#d9a73a', 0.016);
+      addTextPanel('MIXER', x - 0.12, 1.18, z + 0.28, 0.34, 0.12, '#d8d1c2', '#203734');
+
+      const bowl = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.43, 0.32, 0.44, 48, 1, true),
+        new THREE.MeshStandardMaterial({ color: '#d7d2c7', roughness: 0.18, metalness: 0.62, side: THREE.DoubleSide })
+      );
+      bowl.position.set(x, 0.72, z);
+      bowl.castShadow = true;
+      bowl.receiveShadow = true;
+      scene.add(bowl);
+      const bowlLip = new THREE.Mesh(
+        new THREE.TorusGeometry(0.43, 0.016, 8, 56),
+        new THREE.MeshStandardMaterial({ color: '#f1eadc', roughness: 0.16, metalness: 0.55 })
+      );
+      bowlLip.position.set(x, 0.94, z);
+      bowlLip.rotation.x = Math.PI / 2;
+      bowlLip.castShadow = true;
+      scene.add(bowlLip);
+      const dough = new THREE.Mesh(
+        new THREE.SphereGeometry(0.28, 30, 16),
+        new THREE.MeshStandardMaterial({ color: '#d0a85c', roughness: 0.92 })
+      );
+      dough.scale.set(1.5, 0.34, 0.96);
+      dough.position.set(x, 0.83, z);
+      dough.castShadow = true;
+      scene.add(dough);
+      const hookGroup = new THREE.Group();
+      hookGroup.position.set(x, 1.05, z);
+      const hookMat = new THREE.MeshStandardMaterial({ color: '#d8d1c2', roughness: 0.22, metalness: 0.58 });
+      const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.44, 16), hookMat);
+      shaft.position.y = -0.14;
+      hookGroup.add(shaft);
+      const hook = new THREE.Mesh(new THREE.TorusGeometry(0.16, 0.016, 8, 34, Math.PI * 1.35), hookMat);
+      hook.position.y = -0.39;
+      hook.rotation.x = Math.PI / 2;
+      hook.rotation.z = -0.55;
+      hookGroup.add(hook);
+      scene.add(hookGroup);
+
+      const tub = addRoundedBox(x + 0.56, 0.48, z + 0.42, 0.38, 0.28, 0.46, '#dfead1', 0.045, {
+        opacity: 0.38,
+        metalness: 0.04,
+        roughness: 0.16
+      });
+      const tubDough = createLoafGroup(x + 0.56, 0.62, z + 0.42, [1.15, 0.38, 0.8], '#d0a85c');
+
+      return { bowl, bowlLip, dough, hookGroup, head, tub, tubDough };
+    };
+
+    const createProofRackStation = () => {
+      const x = -2.05;
+      const z = 0.85;
+      addSmallLabel('3. transparent proof rack', x, 1.62, z + 0.2, '#203734');
+      addRoundedBox(x, 0.25, z, 1.34, 0.12, 1.0, '#4f6548', 0.055, {
+        metalness: 0.12,
+        roughness: 0.38
+      });
+      const glass = addRoundedBox(x, 0.78, z, 1.34, 0.92, 0.98, '#dfead1', 0.07, {
+        opacity: 0.18,
+        metalness: 0.02,
+        roughness: 0.08
+      });
+      const glow = addRoundedBox(x, 0.78, z, 1.18, 0.76, 0.84, '#dfead1', 0.06, {
+        opacity: 0.18,
+        emissive: '#9fbd7a',
+        emissiveIntensity: 0.2,
+        roughness: 0.8
+      });
+      const metal = '#c8c2b5';
+      [-0.52, 0.52].forEach((sideX) => {
+        [-0.42, 0.42].forEach((sideZ) => {
+          addTube([[x + sideX, 0.24, z + sideZ], [x + sideX, 1.24, z + sideZ]], metal, 0.012, 1);
+        });
+      });
+      const doughs = [];
+      const covers = [];
+      [0.44, 0.72, 1.0].forEach((shelfY, shelfIndex) => {
+        addTube([[x - 0.58, shelfY, z - 0.42], [x + 0.58, shelfY, z - 0.42]], metal, 0.01, 1);
+        addTube([[x - 0.58, shelfY, z + 0.42], [x + 0.58, shelfY, z + 0.42]], metal, 0.01, 1);
+        addRoundedBox(x, shelfY - 0.02, z, 1.02, 0.045, 0.68, '#d8d1c2', 0.025, {
+          metalness: 0.24,
+          roughness: 0.3
+        });
+        [-0.32, 0, 0.32].forEach((offsetX, loafIndex) => {
+          const cover = addRoundedBox(x + offsetX, shelfY + 0.075, z + (loafIndex % 2 ? -0.13 : 0.13), 0.25, 0.16, 0.28, '#ffffff', 0.035, {
+            opacity: 0.24,
+            roughness: 0.08
+          });
+          const dough = createLoafGroup(x + offsetX, shelfY + 0.12, z + (loafIndex % 2 ? -0.13 : 0.13), [0.9, 0.42, 0.72], '#d0a85c');
+          dough.userData = { shelfIndex, loafIndex, baseY: dough.position.y };
+          doughs.push(dough);
+          covers.push(cover);
+        });
+      });
+      const steam = Array.from({ length: 8 }, (_, index) => {
+        const offsetX = -0.45 + index * 0.13;
+        const curve = new THREE.CatmullRomCurve3([
+          new THREE.Vector3(x + offsetX, 0.44, z + 0.06),
+          new THREE.Vector3(x + offsetX + 0.04, 0.72, z + 0.12),
+          new THREE.Vector3(x + offsetX - 0.02, 1.12, z + 0.04)
+        ]);
+        const mesh = new THREE.Mesh(
+          new THREE.TubeGeometry(curve, 18, 0.006, 8),
+          new THREE.MeshStandardMaterial({ color: '#ffffff', transparent: true, opacity: 0.12, roughness: 0.2 })
+        );
+        scene.add(mesh);
+        return mesh;
+      });
+      return { glass, glow, doughs, covers, steam };
+    };
+
+    const createDeckOvenStation = () => {
+      const x = -0.45;
+      const z = -0.85;
+      addSmallLabel('4. Atlas 3-deck steam oven', x, 1.72, z + 0.12, '#203734');
+      const body = addRoundedBox(x, 0.76, z, 1.58, 1.28, 0.92, '#4f6474', 0.1, {
+        metalness: 0.22,
+        roughness: 0.36,
+        bevelThickness: 0.035,
+        bevelSize: 0.035
+      });
+      addTextPanel('ATLAS CRAFT 3', x - 0.22, 1.34, z + 0.49, 0.62, 0.16, '#d8d1c2', '#263330');
+      addTextPanel(`${model.ovenCapacity}/LOAD`, x + 0.45, 1.17, z + 0.52, 0.42, 0.13, '#102523', '#dff6ef');
+      const glows = [];
+      const deckDoors = [];
+      [0.42, 0.75, 1.08].forEach((deckY, index) => {
+        const frame = addRoundedBox(x - 0.16, deckY, z + 0.5, 1.08, 0.24, 0.055, '#d8d1c2', 0.035, {
+          metalness: 0.5,
+          roughness: 0.25
+        });
+        const glass = addRoundedBox(x - 0.16, deckY, z + 0.545, 0.9, 0.15, 0.035, '#101817', 0.025, {
+          opacity: 0.76,
+          roughness: 0.18
+        });
+        const glow = addRoundedBox(x - 0.16, deckY, z + 0.565, 0.78, 0.1, 0.025, '#f0a33c', 0.018, {
+          opacity: 0.2,
+          emissive: '#f97316',
+          emissiveIntensity: 0.26,
+          roughness: 0.8
+        });
+        const handle = addCylinder(x - 0.16, deckY + 0.13, z + 0.61, 0.018, 0.74, '#d7cbb7');
+        handle.rotation.z = Math.PI / 2;
+        handle.material.metalness = 0.48;
+        handle.material.roughness = 0.22;
+        glows.push(glow);
+        deckDoors.push(frame, glass);
+        if (index < 2) {
+          addBox(x, deckY + 0.17, z + 0.04, 1.36, 0.035, 0.74, '#263330', 0.82);
+        }
+      });
+      addRoundedBox(x + 0.58, 0.82, z + 0.54, 0.24, 0.82, 0.055, '#273532', 0.035, {
+        metalness: 0.12,
+        roughness: 0.4
+      });
+      ['260C', 'steam', `${model.ovenLoads} loads`].forEach((label, index) => {
+        addTextPanel(label, x + 0.58, 1.08 - index * 0.24, z + 0.59, 0.3, 0.1, '#102523', index === 1 ? '#8fb3c7' : '#dff6ef');
+      });
+      addTube([[x - 0.78, 1.34, z - 0.1], [x - 1.0, 1.58, z - 0.6], [x - 1.1, 1.58, z - 1.32]], '#8fb3c7', 0.02, 0.86);
+      const steam = Array.from({ length: 5 }, (_, index) => {
+        const curve = new THREE.CatmullRomCurve3([
+          new THREE.Vector3(x - 0.52 + index * 0.2, 1.32, z + 0.52),
+          new THREE.Vector3(x - 0.5 + index * 0.2, 1.54, z + 0.6),
+          new THREE.Vector3(x - 0.57 + index * 0.2, 1.76, z + 0.52)
+        ]);
+        const mesh = new THREE.Mesh(
+          new THREE.TubeGeometry(curve, 18, 0.007, 8),
+          new THREE.MeshStandardMaterial({ color: '#ffffff', transparent: true, opacity: 0.08, roughness: 0.2 })
+        );
+        scene.add(mesh);
+        return mesh;
+      });
+      return { body, glows, deckDoors, steam };
+    };
+
+    const createCoolingRackStation = () => {
+      const x = 1.35;
+      const z = -0.85;
+      addSmallLabel('5. cooling accumulation', x, 1.88, z + 0.12, '#203734');
+      const metal = '#c8c2b5';
+      const shelves = [0.36, 0.67, 0.98, 1.29];
+      [-0.56, 0.56].forEach((sideX) => {
+        [-0.34, 0.34].forEach((sideZ) => {
+          addTube([[x + sideX, 0.2, z + sideZ], [x + sideX, 1.46, z + sideZ]], metal, 0.013, 1);
+        });
+      });
+      shelves.forEach((shelfY) => {
+        addTube([[x - 0.62, shelfY, z - 0.36], [x + 0.62, shelfY, z - 0.36]], metal, 0.012, 1);
+        addTube([[x - 0.62, shelfY, z + 0.36], [x + 0.62, shelfY, z + 0.36]], metal, 0.012, 1);
+        for (let i = 0; i < 8; i += 1) {
+          const wireX = x - 0.48 + i * 0.14;
+          addTube([[wireX, shelfY, z - 0.34], [wireX, shelfY, z + 0.34]], metal, 0.006, 1);
+        }
+      });
+      const loaves = [];
+      shelves.forEach((shelfY, shelfIndex) => {
+        [-0.32, 0, 0.32].forEach((offsetX, loafIndex) => {
+          const loaf = createLoafGroup(x + offsetX, shelfY + 0.1, z + (loafIndex % 2 ? -0.13 : 0.13), [0.95, 0.45, 0.72], '#b96f35');
+          loaf.userData = { shelfIndex, loafIndex, baseY: loaf.position.y };
+          loaves.push(loaf);
+        });
+      });
+      const steam = Array.from({ length: 9 }, (_, index) => {
+        const curve = new THREE.CatmullRomCurve3([
+          new THREE.Vector3(x - 0.48 + index * 0.12, 0.88, z + 0.02),
+          new THREE.Vector3(x - 0.44 + index * 0.12, 1.14, z + 0.08),
+          new THREE.Vector3(x - 0.5 + index * 0.12, 1.42, z + 0.0)
+        ]);
+        const mesh = new THREE.Mesh(
+          new THREE.TubeGeometry(curve, 18, 0.006, 8),
+          new THREE.MeshStandardMaterial({ color: '#ffffff', transparent: true, opacity: 0.12, roughness: 0.2 })
+        );
+        scene.add(mesh);
+        return mesh;
+      });
+      return { loaves, steam };
+    };
+
+    const createSlicerBaggerStation = () => {
+      addSmallLabel('6. slice + bag packout', 3.52, 1.62, 0.25, '#203734');
+      addRoundedBox(2.78, 0.32, 0.8, 1.08, 0.16, 1.22, '#596a70', 0.055, {
+        metalness: 0.18,
+        roughness: 0.36
+      });
+      addRoundedBox(2.8, 0.76, 0.78, 0.74, 0.76, 0.58, '#6f805d', 0.075, {
+        metalness: 0.1,
+        roughness: 0.38
+      });
+      addRoundedBox(2.8, 0.86, 1.11, 0.52, 0.36, 0.05, '#101817', 0.035, {
+        opacity: 0.72,
+        roughness: 0.18
+      });
+      const blade = new THREE.Mesh(
+        new THREE.TorusGeometry(0.18, 0.012, 10, 46),
+        new THREE.MeshStandardMaterial({ color: '#d8d1c2', roughness: 0.18, metalness: 0.72 })
+      );
+      blade.position.set(2.78, 0.82, 1.15);
+      scene.add(blade);
+      const bladeHub = addCylinder(2.78, 0.82, 1.16, 0.04, 0.03, '#596a70');
+      bladeHub.rotation.x = Math.PI / 2;
+      const conveyor = addRoundedBox(3.45, 0.35, 0.18, 1.54, 0.12, 0.36, '#45585d', 0.04, {
+        metalness: 0.18,
+        roughness: 0.38
+      });
+      for (let i = 0; i < 8; i += 1) {
+        addTube([[2.78 + i * 0.18, 0.43, 0.0], [2.78 + i * 0.18, 0.43, 0.36]], '#c8c2b5', 0.006, 1);
+      }
+      const slices = [];
+      for (let i = 0; i < 9; i += 1) {
+        const slice = addRoundedBox(3.05 + i * 0.035, 0.55, 0.26 + i * 0.012, 0.018, 0.22, 0.18, '#d0a85c', 0.012, {
+          roughness: 0.86
+        });
+        slices.push(slice);
+      }
+      const bagger = addRoundedBox(4.02, 0.62, -0.62, 0.82, 0.92, 0.82, '#aeb7b6', 0.075, {
+        metalness: 0.16,
+        roughness: 0.35
+      });
+      addTextPanel('BAG', 4.02, 0.94, -0.13, 0.32, 0.11, '#d8d1c2', '#203734');
+      const roll = addCylinder(4.02, 1.16, -0.62, 0.22, 0.46, '#fffaf0', 0.72);
+      roll.rotation.z = Math.PI / 2;
+      const chute = addRoundedBox(3.78, 0.54, -0.22, 0.52, 0.1, 0.62, '#dfead1', 0.025, {
+        opacity: 0.48,
+        roughness: 0.18
+      });
+      const baggedLoaves = [0, 1, 2].map((index) => {
+        const bag = addRoundedBox(4.2, 0.34 + index * 0.1, -0.15 + index * 0.12, 0.42, 0.12, 0.3, '#fffaf0', 0.035, {
+          opacity: 0.58,
+          roughness: 0.18
+        });
+        bag.userData = { baseY: bag.position.y };
+        return bag;
+      });
+      return { blade, bladeHub, conveyor, slices, bagger, roll, chute, baggedLoaves };
+    };
+
+    const createWashdownStation = () => {
+      addSmallLabel('7. timed washdown', 4.72, 1.34, -1.28, '#203734');
+      const basin = addRoundedBox(4.68, 0.32, -1.22, 0.82, 0.18, 0.58, '#596a70', 0.055, {
+        metalness: 0.22,
+        roughness: 0.3
+      });
+      addRoundedBox(4.68, 0.44, -1.22, 0.62, 0.08, 0.42, '#8fb3c7', 0.04, {
+        opacity: 0.52,
+        roughness: 0.16
+      });
+      const faucet = addTube([[4.48, 0.58, -1.22], [4.48, 0.88, -1.22], [4.68, 0.88, -1.22], [4.68, 0.68, -1.22]], '#d8d1c2', 0.018, 1);
+      const water = Array.from({ length: 5 }, (_, index) => {
+        const stream = addTube([[4.58 + index * 0.04, 0.66, -1.22], [4.6 + index * 0.04, 0.48, -1.21]], '#8fb3c7', 0.006, 0.75);
+        return stream;
+      });
+      return { basin, faucet, water };
+    };
+
     const floorW = multiplier > 5 ? 12.4 : 10.4;
     const moduleCount = multiplier <= 2 ? 1 : multiplier <= 5 ? 2 : 3;
     const laneCount = Math.min(4, Math.max(1, Math.ceil(multiplier / 2)));
@@ -2238,16 +2699,28 @@ function ContainerScene({ model, multiplier, schedule }) {
       })
     );
 
+    Object.values(stationMeshes).forEach((mesh) => {
+      mesh.visible = false;
+    });
+    const meteringMixer = createMeteringMixerStation();
+    const proofRack = createProofRackStation();
+    const deckOven = createDeckOvenStation();
+    const coolingRack = createCoolingRackStation();
+    const slicerBagger = createSlicerBaggerStation();
+    const washdownStation = createWashdownStation();
+    addSmallLabel(`${model.targetLoaves} loaves · ${model.ovenLoads} oven load${model.ovenLoads === 1 ? '' : 's'} · ${model.bakeRounds} bake round${model.bakeRounds === 1 ? '' : 's'}`, 0.35, 2.02, 1.45, '#9c442e');
+
     const mixer = stationMeshes.mixer;
     const mixerDrum = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.36, 0.78, 28), new THREE.MeshStandardMaterial({ color: '#f0e0b5', roughness: 0.82 }));
     mixerDrum.rotation.x = Math.PI / 2;
     mixerDrum.position.set(-3.45, 0.68, -0.7);
     scene.add(mixerDrum);
+    mixerDrum.visible = false;
 
     for (let lane = 0; lane < laneCount; lane += 1) {
       const z = 1.48 - lane * 0.36;
       for (let i = 0; i < Math.min(7, multiplier + 2); i += 1) {
-        addBox(-3.6 + i * 1.15, 0.22, z, 0.48, 0.28, 0.58, lane === 0 ? '#caa15a' : '#d6b56f');
+        addBox(-3.6 + i * 1.15, 0.22, z, 0.48, 0.18, 0.58, lane === 0 ? '#caa15a' : '#d6b56f', 0.44);
       }
     }
     if (multiplier > 2) {
@@ -2320,8 +2793,21 @@ function ContainerScene({ model, multiplier, schedule }) {
       upper.position.set(0.62, 0.92, 0);
       upper.rotation.z = 0.7;
       group.add(upper);
+      const wrist = new THREE.Mesh(new THREE.SphereGeometry(0.11, 18, 12), mat);
+      wrist.position.set(0.86, 1.22, 0);
+      group.add(wrist);
+      const gripper = new THREE.Group();
+      gripper.position.set(1.02, 1.24, 0);
+      const palm = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.06, 0.12), mat);
+      gripper.add(palm);
+      [-0.07, 0.07].forEach((offsetZ) => {
+        const finger = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.035, 0.035), mat);
+        finger.position.set(0.13, -0.04, offsetZ);
+        gripper.add(finger);
+      });
+      group.add(gripper);
       scene.add(group);
-      return { group, lower, upper };
+      return { group, lower, upper, wrist, gripper };
     });
     addSmallLabel('ARM A: dough handling', -0.95, 1.55, 0.24, '#d9a73a');
     addSmallLabel('ARM B: oven + packout', 1.8, 1.55, 0.24, '#d9a73a');
@@ -2340,6 +2826,10 @@ function ContainerScene({ model, multiplier, schedule }) {
       clean: [{ y: 0, z: 0.18, lower: -0.2, upper: 0.35 }, { y: 0, z: -0.18, lower: -0.2, upper: 0.35 }]
     };
     const applyPhase = (t, elapsed) => {
+      const nextStage = getStageIndexForPhase(schedule, t * 100);
+      const stage = schedule.stages[nextStage] || schedule.stages[0];
+      const stageProgress = clampNumber(((t * schedule.totalMinutes) - stage.startMinute) / stage.minutes, 0, 0, 1);
+      const stageId = stage.id;
       trayGroups.forEach((trayGroup, index) => {
         const trayT = clampNumber(t - index * 0.035, 0, 0, 0.99);
         const pos = curve.getPointAt(trayT);
@@ -2368,8 +2858,91 @@ function ContainerScene({ model, multiplier, schedule }) {
         badge.position.y += Math.sin(feedT * Math.PI) * 0.28;
         badge.material.opacity = feedT < 0.82 ? 1 : 0.25;
       });
-      const nextStage = getStageIndexForPhase(schedule, t * 100);
-      const activeFocus = stageFocus[schedule.stages[nextStage]?.id] || stageFocus.mix;
+      meteringMixer.hookGroup.rotation.y += stageId === 'mix' ? 0.22 : stageId === 'proof' ? 0.025 : 0.012;
+      meteringMixer.bowl.rotation.y += stageId === 'mix' ? 0.04 : 0.006;
+      meteringMixer.dough.rotation.y += stageId === 'mix' ? 0.06 : 0.008;
+      meteringMixer.dough.scale.set(
+        1.5 + (stageId === 'mix' ? Math.sin(elapsed * 8) * 0.055 : 0),
+        0.34 + (stageId === 'proof' ? 0.08 : 0) + (stageId === 'mix' ? Math.cos(elapsed * 7) * 0.02 : 0),
+        0.96 + (stageId === 'mix' ? Math.cos(elapsed * 7) * 0.04 : 0)
+      );
+      meteringMixer.tubDough.visible = ['proof', 'shape', 'bake', 'cool', 'slice', 'clean'].includes(stageId);
+      meteringMixer.tubDough.scale.setScalar(meteringMixer.tubDough.visible ? 1 + Math.sin(elapsed * 2.3) * 0.015 : 0.6);
+      meteringMixer.head.material.emissive.set(stageId === 'mix' ? '#332600' : '#000000');
+      meteringMixer.head.material.emissiveIntensity = stageId === 'mix' ? 0.24 : 0;
+
+      const proofProgress = stageId === 'proof'
+        ? stageProgress
+        : (['shape', 'bake', 'cool', 'slice', 'clean'].includes(stageId) ? 1 : stageId === 'mix' ? 0.2 : 0.08);
+      proofRack.glow.material.opacity = stageId === 'proof' ? 0.38 + Math.sin(elapsed * 3) * 0.06 : 0.16;
+      proofRack.glow.material.emissiveIntensity = stageId === 'proof' ? 0.45 : 0.18;
+      proofRack.glass.material.opacity = stageId === 'proof' ? 0.28 : 0.16;
+      proofRack.doughs.forEach((dough, index) => {
+        const stagger = clampNumber(proofProgress - index * 0.035, 0.05, 0.05, 1);
+        dough.visible = proofProgress > index * 0.025 || ['shape', 'bake', 'cool', 'slice', 'clean'].includes(stageId);
+        dough.scale.set(0.78 + stagger * 0.32, 0.8 + stagger * 0.18, 0.78 + stagger * 0.16);
+        dough.position.y = dough.userData.baseY + stagger * 0.055 + Math.sin(elapsed * 1.9 + index) * 0.004;
+      });
+      proofRack.covers.forEach((cover) => {
+        cover.material.opacity = stageId === 'proof' ? 0.32 : 0.2;
+      });
+      proofRack.steam.forEach((wisp, index) => {
+        wisp.material.opacity = stageId === 'proof' ? 0.2 + Math.sin(elapsed * 2 + index) * 0.035 : 0.05;
+        wisp.position.y = Math.sin(elapsed * 1.4 + index) * 0.025;
+      });
+
+      deckOven.body.material.emissive.set(stageId === 'bake' || stageId === 'shape' ? '#6a2b15' : '#000000');
+      deckOven.body.material.emissiveIntensity = stageId === 'bake' ? 0.26 + Math.sin(elapsed * 3) * 0.08 : stageId === 'shape' ? 0.08 : 0;
+      deckOven.glows.forEach((glow, index) => {
+        const loadGlow = stageId === 'bake' ? 0.52 + Math.sin(elapsed * 5 + index) * 0.08 : 0.16;
+        glow.material.opacity = loadGlow;
+        glow.material.emissiveIntensity = stageId === 'bake' ? 0.82 : 0.24;
+      });
+      deckOven.steam.forEach((wisp, index) => {
+        wisp.material.opacity = stageId === 'bake' ? 0.22 + Math.sin(elapsed * 2.2 + index) * 0.04 : 0.05;
+        wisp.position.y = Math.sin(elapsed * 1.7 + index) * 0.04;
+      });
+
+      const rackFill = stageId === 'cool'
+        ? stageProgress
+        : (['slice', 'clean'].includes(stageId) ? 1 : stageId === 'bake' ? clampNumber(stageProgress - 0.55, 0, 0, 1) : 0);
+      coolingRack.loaves.forEach((loaf, index) => {
+        const visible = rackFill > index / Math.max(1, coolingRack.loaves.length - 1);
+        loaf.visible = visible;
+        loaf.position.y = loaf.userData.baseY + (visible ? Math.sin(elapsed * 1.6 + index) * 0.005 : 0);
+      });
+      coolingRack.steam.forEach((wisp, index) => {
+        wisp.visible = rackFill > 0.08;
+        wisp.material.opacity = stageId === 'cool' ? 0.22 + Math.sin(elapsed * 2.3 + index) * 0.04 : 0.06;
+        wisp.position.y = Math.sin(elapsed * 1.7 + index) * 0.035;
+      });
+
+      slicerBagger.blade.rotation.z += stageId === 'slice' ? 0.28 : 0.025;
+      slicerBagger.bladeHub.rotation.z += stageId === 'slice' ? 0.28 : 0.025;
+      slicerBagger.conveyor.material.emissive.set(stageId === 'slice' ? '#162d20' : '#000000');
+      slicerBagger.conveyor.material.emissiveIntensity = stageId === 'slice' ? 0.2 : 0;
+      slicerBagger.slices.forEach((slice, index) => {
+        slice.visible = ['slice', 'clean'].includes(stageId);
+        slice.position.x = 3.05 + index * 0.035 + (stageId === 'slice' ? Math.sin(elapsed * 5 + index) * 0.012 : 0);
+      });
+      slicerBagger.baggedLoaves.forEach((bag, index) => {
+        bag.visible = ['slice', 'clean'].includes(stageId);
+        bag.position.y = bag.userData.baseY + (stageId === 'slice' ? Math.sin(elapsed * 2.5 + index) * 0.012 : 0);
+        bag.material.opacity = stageId === 'slice' ? 0.72 : 0.5;
+      });
+      slicerBagger.roll.rotation.z += stageId === 'slice' ? 0.035 : 0.004;
+      slicerBagger.bagger.material.emissive.set(stageId === 'slice' ? '#172b22' : '#000000');
+      slicerBagger.bagger.material.emissiveIntensity = stageId === 'slice' ? 0.16 : 0;
+
+      washdownStation.water.forEach((stream, index) => {
+        stream.visible = stageId === 'clean';
+        stream.material.opacity = stageId === 'clean' ? 0.75 + Math.sin(elapsed * 5 + index) * 0.08 : 0.08;
+        stream.position.y = Math.sin(elapsed * 4 + index) * 0.015;
+      });
+      washdownStation.basin.material.emissive.set(stageId === 'clean' ? '#12343d' : '#000000');
+      washdownStation.basin.material.emissiveIntensity = stageId === 'clean' ? 0.18 : 0;
+
+      const activeFocus = stageFocus[stageId] || stageFocus.mix;
       Object.entries(stationFocusMeshes).forEach(([stationId, focusMesh]) => {
         const active = stationId === activeFocus.station;
         focusMesh.visible = active;
@@ -2382,18 +2955,20 @@ function ContainerScene({ model, multiplier, schedule }) {
       });
       Object.entries(stationCallouts).forEach(([stage, callout]) => {
         const { sprite, baseY } = callout;
-        sprite.visible = stage === schedule.stages[nextStage]?.id;
+        sprite.visible = stage === stageId;
         if (sprite.visible) {
           sprite.position.y = baseY + Math.sin(elapsed * 3) * 0.02;
         }
       });
-      const poseSet = armPoses[schedule.stages[nextStage]?.id] || armPoses.mix;
+      const poseSet = armPoses[stageId] || armPoses.mix;
       armGroups.forEach((arm, index) => {
         const pose = poseSet[index] || poseSet[0];
         arm.group.rotation.y = pose.y + Math.sin(elapsed * 2 + index) * 0.04;
         arm.group.rotation.z = pose.z;
         arm.lower.rotation.z = pose.lower;
         arm.upper.rotation.z = pose.upper;
+        arm.wrist.rotation.y = elapsed * (stageId === 'clean' ? 1.8 : 0.8);
+        arm.gripper.rotation.z = (stageId === 'shape' || stageId === 'slice' ? Math.sin(elapsed * 5 + index) * 0.14 : 0);
       });
       if (stageRef.current !== nextStage) {
         stageRef.current = nextStage;
@@ -2425,7 +3000,7 @@ function ContainerScene({ model, multiplier, schedule }) {
       renderer.setSize(el.clientWidth, el.clientHeight);
       camera.aspect = el.clientWidth / el.clientHeight;
       camera.updateProjectionMatrix();
-      camera.lookAt(cameraTarget);
+      positionCamera();
     };
     window.addEventListener('resize', resize);
     return () => {
