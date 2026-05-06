@@ -275,6 +275,7 @@ function App() {
   const [assumptions, setAssumptions] = useState(initialState.assumptions);
   const safeAssumptions = useMemo(() => sanitizeAssumptions(assumptions), [assumptions]);
   const model = useMemo(() => computeModel({ loaves, multiplier, school, sliced, assumptions: safeAssumptions }), [loaves, multiplier, school, sliced, safeAssumptions]);
+  const overviewModel = useMemo(() => computeModel({ loaves: 50, multiplier: 1, school: true, sliced: true, assumptions: safeAssumptions }), [safeAssumptions]);
 
   useEffect(() => {
     try {
@@ -291,7 +292,7 @@ function App() {
   return (
     <main>
       <Nav page={page} setPage={setPage} />
-      {page === 'overview' && <Overview model={model} setPage={setPage} />}
+      {page === 'overview' && <Overview model={overviewModel} setPage={setPage} />}
       {page === 'model' && (
         <Model
           model={model}
