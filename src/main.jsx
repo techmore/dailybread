@@ -57,7 +57,7 @@ const workflowTemplates = [
   { id: 'mix', name: 'Mix', minutes: 20, detail: 'Flour, starter, water, and salt meter into the mixer.' },
   { id: 'proof', name: 'Bulk Proof', minutes: 180, detail: 'Dough tubs move to controlled proofing racks.' },
   { id: 'shape', name: 'Shape + Load', minutes: 25, detail: 'Robot arm stages trays and builds oven-ready loads.' },
-  { id: 'bake', name: 'Bake', getMinutes: (model) => Math.max(52, Math.round(model.bakeHours * 60)), detail: (model) => `Atlas decks run ${model.batches} oven load${model.batches === 1 ? '' : 's'} at about ${Math.min(model.ovenCapacity, model.targetLoaves)} loaves per load.` },
+  { id: 'bake', name: 'Bake', getMinutes: (model) => Math.max(52, Math.round(model.bakeHours * 60)), detail: (model) => `Atlas decks run ${model.ovenLoads} load${model.ovenLoads === 1 ? '' : 's'} across ${model.ovenUnits} oven${model.ovenUnits === 1 ? '' : 's'}, or ${model.bakeRounds} bake round${model.bakeRounds === 1 ? '' : 's'}.` },
   { id: 'cool', name: 'Cool', minutes: 90, detail: 'Finished loaves accumulate through cooling rack lanes.' },
   { id: 'slice', name: 'Slice + Bag', minutes: 40, detail: 'School loaves are sliced, bagged, and staged for delivery.' },
   { id: 'clean', name: 'Clean', minutes: 15, detail: 'Food-safe tools run a timed washdown cycle.' }
@@ -135,8 +135,13 @@ function formatDuration(minutes) {
 
 function formatClock(offsetMinutes) {
   const minutesFromMidnight = (dayStartMinutes + Math.round(offsetMinutes)) % (24 * 60);
-  const hour24 = Math.floor(minutesFromMidnight / 60);
-  const minute = minutesFromMidnight % 60;
+  return formatWallClock(minutesFromMidnight);
+}
+
+function formatWallClock(minutesFromMidnight) {
+  const normalizedMinutes = ((Math.round(minutesFromMidnight) % (24 * 60)) + (24 * 60)) % (24 * 60);
+  const hour24 = Math.floor(normalizedMinutes / 60);
+  const minute = normalizedMinutes % 60;
   const suffix = hour24 >= 12 ? 'PM' : 'AM';
   const hour12 = hour24 % 12 || 12;
   return `${hour12}:${String(minute).padStart(2, '0')} ${suffix}`;
@@ -181,18 +186,43 @@ function getWorkflowTelemetry(model, schedule, phase, stageIndex) {
   const currentStage = schedule.stages[stageIndex] || schedule.stages[0];
   const bakeStage = schedule.stages.find((stage) => stage.id === 'bake');
   const bakeElapsed = bakeStage ? clampNumber(currentMinute - bakeStage.startMinute, 0, 0, bakeStage.minutes) : 0;
-  const activeBatch = bakeStage && currentMinute >= bakeStage.startMinute
-    ? Math.min(model.batches, Math.max(1, Math.ceil((bakeElapsed / bakeStage.minutes) * model.batches)))
+  const activeRound = bakeStage && currentMinute >= bakeStage.startMinute
+    ? Math.min(model.bakeRounds, Math.max(1, Math.ceil((bakeElapsed / bakeStage.minutes) * model.bakeRounds)))
     : 0;
+  const loadStart = activeRound ? (activeRound - 1) * model.ovenUnits + 1 : 0;
+  const loadEnd = activeRound ? Math.min(model.ovenLoads, activeRound * model.ovenUnits) : 0;
   const completedLoaves = Math.min(model.targetLoaves, Math.round((currentMinute / schedule.totalMinutes) * model.targetLoaves));
 
   return {
     clock: formatClock(currentMinute),
     stageWindow: `${currentStage.startLabel}-${currentStage.endLabel}`,
-    activeBatch,
+    activeRound,
+    activeLoadLabel: activeRound ? (loadStart === loadEnd ? `${loadStart}` : `${loadStart}-${loadEnd}`) : 'Queued',
     completedLoaves,
     cleanStatus: currentStage.id === 'clean' ? 'Washdown running' : 'Queued after packout'
   };
+}
+
+function getAutomationInsights(model, schedule, multiplier) {
+  const packoutStage = schedule.stages.find((stage) => stage.id === 'slice') || schedule.stages.at(-1);
+  const longestStage = schedule.stages.reduce((longest, stage) => (stage.minutes > longest.minutes ? stage : longest), schedule.stages[0]);
+  const lunchTargetOffset = 5.5 * 60;
+  const minutesLate = Math.round(packoutStage.endMinute - lunchTargetOffset);
+  const requiredStart = (11 * 60 + 30) - packoutStage.endMinute;
+  const requiredStartLabel = requiredStart < 0 ? `${formatWallClock(requiredStart)} previous day` : formatWallClock(requiredStart);
+  const layout = multiplier <= 2 ? 'Single 20 ft module' : multiplier <= 5 ? 'Two 20 ft modules with shared oven spine' : '40 ft / annex layout';
+  const lunchFit = minutesLate <= 0 ? 'Fits 11:30 AM lunch' : `${formatDuration(minutesLate)} past 11:30 AM`;
+  const recommendation = minutesLate <= 0
+    ? 'Current cadence clears lunch without an earlier start.'
+    : `Start around ${requiredStartLabel} or add overnight proof / oven capacity.`;
+
+  return [
+    ['Packout ETA', packoutStage.endLabel, `Slice + bag complete after ${formatDuration(packoutStage.endMinute)} from start.`],
+    ['Lunch fit', lunchFit, recommendation],
+    ['Main constraint', longestStage.name, `${longestStage.name} consumes ${formatDuration(longestStage.minutes)} of the modeled day.`],
+    ['Oven strategy', `${model.ovenUnits} oven${model.ovenUnits === 1 ? '' : 's'}`, `${model.ovenLoads} loads collapse into ${model.bakeRounds} bake rounds.`],
+    ['Layout', layout, `${model.targetLoaves} loaves across x${multiplier} scale.`]
+  ];
 }
 
 function clampNumber(value, fallback, min = 0, max = Number.POSITIVE_INFINITY) {
@@ -269,9 +299,13 @@ function getEquipmentUnits(multiplier) {
   return Math.max(1, Math.ceil(multiplier / 3));
 }
 
+function getOvenUnits(multiplier) {
+  return Math.max(1, Math.ceil(multiplier / 4));
+}
+
 function getEquipmentRows(multiplier, assumptions) {
   const equipmentUnits = getEquipmentUnits(multiplier);
-  const ovenQty = Math.max(1, Math.ceil(multiplier / 4));
+  const ovenQty = getOvenUnits(multiplier);
 
   return [
     ['Atlas Craft 3 steam deck oven', ovenQty, assumptions.deckOvenCost, 'Midpoint of $5k-$7k quote'],
@@ -289,15 +323,18 @@ function computeModel({ loaves, multiplier, school, sliced, assumptions }) {
   const safeMultiplier = clampInteger(multiplier, 1, 1, 100);
   const targetLoaves = safeLoaves * safeMultiplier;
   const recipe = sliced ? recipes.sliced : recipes.artisan;
-  const batches = Math.ceil(targetLoaves / safeAssumptions.ovenCapacity);
-  const bakeHours = (batches * recipe.bakeMin + 14 * batches) / 60;
+  const ovenUnits = getOvenUnits(safeMultiplier);
+  const ovenLoads = Math.ceil(targetLoaves / safeAssumptions.ovenCapacity);
+  const bakeRounds = Math.ceil(ovenLoads / ovenUnits);
+  const bakeMinutesPerLoad = recipe.bakeMin + 14;
+  const bakeHours = (bakeRounds * bakeMinutesPerLoad) / 60;
   const flourKg = (recipe.flourG * targetLoaves) / 1000;
   const waterL = (recipe.waterG * targetLoaves) / 1000;
   const starterKg = (recipe.starterG * targetLoaves) / 1000;
   const saltKg = (recipe.saltG * targetLoaves) / 1000;
   const flourCost = recipe.flourG * targetLoaves * flourCostPerG;
   const saltCost = recipe.saltG * targetLoaves * saltCostPerG;
-  const electricityKwh = batches * safeAssumptions.ovenKwhPerBatch + safeAssumptions.utilityKwhPerScale * safeMultiplier;
+  const electricityKwh = ovenLoads * safeAssumptions.ovenKwhPerBatch + safeAssumptions.utilityKwhPerScale * safeMultiplier;
   const electricityCost = electricityKwh * safeAssumptions.electricityRate;
   const bagCost = sliced ? safeAssumptions.slicedBagCost : safeAssumptions.artisanBagCost;
   const packagingCost = targetLoaves * bagCost;
@@ -310,13 +347,17 @@ function computeModel({ loaves, multiplier, school, sliced, assumptions }) {
   const revenue = price * targetLoaves * (school ? 5 : 1);
   const weeklyCost = dailyCost * (school ? 5 : 1);
   const gross = revenue - weeklyCost;
-  const ovenUtilization = Math.min(100, (targetLoaves / (batches * safeAssumptions.ovenCapacity)) * 100);
+  const ovenUtilization = Math.min(100, (targetLoaves / (ovenLoads * safeAssumptions.ovenCapacity)) * 100);
 
   return {
     targetLoaves,
     recipe,
     ovenCapacity: safeAssumptions.ovenCapacity,
-    batches,
+    batches: ovenLoads,
+    ovenLoads,
+    ovenUnits,
+    bakeRounds,
+    bakeMinutesPerLoad,
     bakeHours,
     flourKg,
     waterL,
@@ -456,7 +497,7 @@ function Dashboard({ model }) {
       <div className="big">{model.targetLoaves}</div>
       <p>loaves planned</p>
       <div className="metrics">
-        <Metric label="Batches" value={model.batches} />
+        <Metric label="Oven loads" value={model.ovenLoads} />
         <Metric label="Bake time" value={`${format1(model.bakeHours)}h`} />
         <Metric label="Unit cost" value={formatMoney(model.unitCost)} />
         <Metric label="Water" value={`${format1(model.waterL + model.cleaningWater)}L`} />
@@ -501,7 +542,7 @@ function Model(props) {
         <Panel title="Daily Output">
           <div className="kpiRow">
             <Metric label="Target" value={model.targetLoaves} />
-            <Metric label="Oven batches" value={model.batches} />
+            <Metric label="Oven loads" value={model.ovenLoads} />
             <Metric label="Bake window" value={`${format1(model.bakeHours)}h`} />
             <Metric label="Atlas fill" value={`${format1(model.ovenUtilization)}%`} />
           </div>
@@ -626,6 +667,8 @@ function AssumptionEditor({ assumptions, setAssumptions }) {
 function Automation({ model, multiplier, setMultiplier, assumptions }) {
   const containers = multiplier <= 2 ? 'One 20 ft container' : multiplier <= 5 ? 'Two 20 ft containers sharing oven/service spine' : 'One 40 ft container plus staging annex';
   const capex = getEquipmentRows(multiplier, assumptions).reduce((sum, [, qty, unit]) => sum + qty * unit, 0);
+  const schedule = useMemo(() => getWorkflowSchedule(model), [model]);
+  const insights = getAutomationInsights(model, schedule, multiplier);
 
   return (
     <section className="page">
@@ -635,7 +678,7 @@ function Automation({ model, multiplier, setMultiplier, assumptions }) {
       </div>
       <div className="pitchStrip">
         <Metric label="Lunch output" value={`${model.targetLoaves} loaves`} />
-        <Metric label="Bake cycle" value={`${model.batches} batches`} />
+        <Metric label="Bake cycle" value={`${model.bakeRounds} rounds / ${model.ovenLoads} loads`} />
         <Metric label="Concept CAPEX" value={formatMoney(capex)} />
         <Metric label="Water/day" value={`${format1(model.waterL + model.cleaningWater)} L`} />
       </div>
@@ -661,7 +704,8 @@ function Automation({ model, multiplier, setMultiplier, assumptions }) {
             ))}
           </div>
         </div>
-        <ContainerScene model={model} multiplier={multiplier} />
+        <ContainerScene model={model} multiplier={multiplier} schedule={schedule} />
+        <AutomationInsights insights={insights} />
       </section>
       <div className="autoGrid">
         <Panel title="Recommended Configuration">
@@ -676,7 +720,9 @@ function Automation({ model, multiplier, setMultiplier, assumptions }) {
           <div className="timingGrid">
             <Metric label="Mix + shape" value="45 min" />
             <Metric label="Bulk/proof time" value="3 hr" />
-            <Metric label="Oven loads" value={model.batches} />
+            <Metric label="Oven loads" value={model.ovenLoads} />
+            <Metric label="Bake rounds" value={model.bakeRounds} />
+            <Metric label="Ovens modeled" value={model.ovenUnits} />
             <Metric label="Bake window" value={`${format1(model.bakeHours)}h`} />
           </div>
           <p className="note">The animated line compresses the day into a loop: ingredient metering, mix, proof, robotic loading, bake, cool, slice, bag, and clean. The financial model still uses the loaf count and oven batch math above.</p>
@@ -698,13 +744,26 @@ function Automation({ model, multiplier, setMultiplier, assumptions }) {
   );
 }
 
-function ContainerScene({ model, multiplier }) {
+function AutomationInsights({ insights }) {
+  return (
+    <div className="insightGrid">
+      {insights.map(([label, value, detail]) => (
+        <article key={label}>
+          <span>{label}</span>
+          <strong>{value}</strong>
+          <p>{detail}</p>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function ContainerScene({ model, multiplier, schedule }) {
   const mount = useRef(null);
   const [playing, setPlaying] = useState(true);
   const [phase, setPhase] = useState(0);
   const [stageIndex, setStageIndex] = useState(0);
   const [sceneError, setSceneError] = useState(false);
-  const schedule = useMemo(() => getWorkflowSchedule(model), [model]);
   const currentStage = schedule.stages[stageIndex] || schedule.stages[0];
   const telemetry = getWorkflowTelemetry(model, schedule, phase, stageIndex);
   const playingRef = useRef(playing);
@@ -849,7 +908,7 @@ function ContainerScene({ model, multiplier }) {
     const floorW = multiplier > 5 ? 12.4 : 10.4;
     const moduleCount = multiplier <= 2 ? 1 : multiplier <= 5 ? 2 : 3;
     const laneCount = Math.min(4, Math.max(1, Math.ceil(multiplier / 2)));
-    const ovenQueueCount = Math.min(6, Math.max(1, model.batches));
+    const ovenQueueCount = Math.min(6, Math.max(1, model.ovenLoads));
     addBox(0, -0.08, 0, floorW, 0.12, 3.6, '#d8c89f');
     addBox(0, 1.05, -1.92, floorW, 2.35, 0.05, '#d8c89f', 0.28);
     addBox(-floorW / 2, 1.05, 0, 0.05, 2.35, 3.6, '#d8c89f', 0.22);
@@ -943,7 +1002,7 @@ function ContainerScene({ model, multiplier }) {
       scene.add(trayGroup);
       return trayGroup;
     };
-    const trayGroups = Array.from({ length: Math.min(10, Math.max(3, model.batches + moduleCount)) }, (_, index) => createTray(index));
+    const trayGroups = Array.from({ length: Math.min(10, Math.max(3, model.ovenLoads + moduleCount)) }, (_, index) => createTray(index));
 
     const pulse = new THREE.Mesh(new THREE.SphereGeometry(0.08, 20, 20), new THREE.MeshStandardMaterial({ color: '#e2b84f', emissive: '#c88e17', emissiveIntensity: 0.7 }));
     scene.add(pulse);
@@ -1050,7 +1109,7 @@ function ContainerScene({ model, multiplier }) {
         el.removeChild(renderer.domElement);
       }
     };
-  }, [multiplier, model.batches, model.targetLoaves, model.ovenCapacity, schedule]);
+  }, [multiplier, model.ovenLoads, model.targetLoaves, model.ovenCapacity, schedule]);
 
   const updatePhase = (value) => {
     const nextPhase = clampNumber(value, 0, 0, 100);
@@ -1081,7 +1140,8 @@ function ContainerScene({ model, multiplier }) {
         </label>
       </div>
       <div className="sceneTelemetry">
-        <Metric label="Active batch" value={`${telemetry.activeBatch}/${model.batches}`} />
+        <Metric label="Bake round" value={`${telemetry.activeRound}/${model.bakeRounds}`} />
+        <Metric label="Oven loads" value={telemetry.activeLoadLabel} />
         <Metric label="Oven load" value={`${Math.min(model.ovenCapacity, model.targetLoaves)} loaves`} />
         <Metric label="Loaves through line" value={`${telemetry.completedLoaves}/${model.targetLoaves}`} />
         <Metric label="Water + clean" value={`${format1(model.waterL + model.cleaningWater)} L`} />

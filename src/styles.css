@@ -597,10 +597,47 @@ td:last-child {
   width: 100%;
 }
 
-.sceneTelemetry {
+.insightGrid {
   display: grid;
   gap: 10px;
   grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin-top: 14px;
+}
+
+.insightGrid article {
+  background: rgba(255, 250, 240, .82);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.insightGrid span {
+  color: var(--ink-muted);
+  display: block;
+  font-size: .78rem;
+  font-weight: 800;
+}
+
+.insightGrid strong {
+  color: var(--ink);
+  display: block;
+  font-size: 1.05rem;
+  line-height: 1.15;
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+}
+
+.insightGrid p {
+  color: var(--ink-muted);
+  font-size: .82rem;
+  margin: 7px 0 0;
+}
+
+.sceneTelemetry {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   margin-top: 12px;
 }
 
@@ -732,6 +769,7 @@ footer {
   .kpiRow,
   .finance,
   .pitchStrip,
+  .insightGrid,
   .sceneTelemetry,
   .assumptionGrid,
   .referenceGrid {
@@ -761,6 +799,7 @@ footer {
   .pitchStrip,
   .assumptionGrid,
   .referenceGrid,
+  .insightGrid,
   .sceneTelemetry,
   .timingGrid,
   .metrics {
