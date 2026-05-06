@@ -1376,6 +1376,118 @@ function HomeBreadScene({ model, schedule }) {
       return { bowl, bowlLip, dough, hookGroup, head };
     };
 
+    const createProofDrawer = (x, y, z) => {
+      addRoundedBox(x, 0.25, z, 1.02, 0.16, 0.76, '#4f6548', 0.055, {
+        metalness: 0.12,
+        roughness: 0.38
+      });
+      const glass = addRoundedBox(x, y + 0.18, z, 0.98, 0.58, 0.72, '#dfead1', 0.055, {
+        opacity: 0.24,
+        metalness: 0.02,
+        roughness: 0.08
+      });
+      const back = addRoundedBox(x, y + 0.18, z - 0.36, 0.98, 0.58, 0.035, '#71865c', 0.035, {
+        opacity: 0.34,
+        roughness: 0.52
+      });
+      const glow = addRoundedBox(x, y + 0.18, z, 0.84, 0.44, 0.58, '#dfead1', 0.04, {
+        opacity: 0.2,
+        emissive: '#9fbd7a',
+        emissiveIntensity: 0.2,
+        roughness: 0.8
+      });
+      addCylinder(x - 0.43, y + 0.47, z + 0.38, 0.018, 0.42, '#d8d1c2').rotation.z = Math.PI / 2;
+
+      const tray = addRoundedBox(x, y - 0.04, z + 0.02, 0.72, 0.055, 0.46, '#d8d1c2', 0.03, {
+        metalness: 0.28,
+        roughness: 0.28
+      });
+      const dough = new THREE.Mesh(
+        new THREE.SphereGeometry(0.23, 32, 18),
+        new THREE.MeshStandardMaterial({ color: '#d0a85c', roughness: 0.9 })
+      );
+      dough.scale.set(1.1, 0.55, 0.86);
+      dough.position.set(x, y + 0.07, z + 0.02);
+      dough.castShadow = true;
+      dough.receiveShadow = true;
+      scene.add(dough);
+
+      const marks = [0.32, 0.42, 0.52].map((markY, index) => addBox(x - 0.48, y - 0.06 + markY, z + 0.39, 0.12 + index * 0.04, 0.01, 0.01, '#596a70', 0.72));
+      const steam = Array.from({ length: 5 }, (_, index) => {
+        const curve = new THREE.CatmullRomCurve3([
+          new THREE.Vector3(x - 0.28 + index * 0.14, y + 0.1, z + 0.02),
+          new THREE.Vector3(x - 0.26 + index * 0.14, y + 0.26, z + 0.06),
+          new THREE.Vector3(x - 0.3 + index * 0.14, y + 0.42, z + 0.02)
+        ]);
+        const mesh = new THREE.Mesh(
+          new THREE.TubeGeometry(curve, 18, 0.006, 8),
+          new THREE.MeshStandardMaterial({ color: '#ffffff', transparent: true, opacity: 0.18, roughness: 0.2 })
+        );
+        scene.add(mesh);
+        return mesh;
+      });
+
+      return { glass, back, glow, tray, dough, marks, steam };
+    };
+
+    const createCoolingRack = (x, y, z) => {
+      const metal = '#c8c2b5';
+      addRoundedBox(x, y - 0.13, z, 0.94, 0.08, 0.72, '#9c442e', 0.04, {
+        opacity: 0.35,
+        metalness: 0.1,
+        roughness: 0.55
+      });
+      const rails = [
+        [[x - 0.48, y, z - 0.34], [x + 0.48, y, z - 0.34]],
+        [[x - 0.48, y, z + 0.34], [x + 0.48, y, z + 0.34]],
+        [[x - 0.48, y + 0.18, z - 0.34], [x + 0.48, y + 0.18, z - 0.34]],
+        [[x - 0.48, y + 0.18, z + 0.34], [x + 0.48, y + 0.18, z + 0.34]]
+      ];
+      rails.forEach(([start, end]) => addTube([start, end], metal, 0.012, 1));
+      for (let i = 0; i < 8; i += 1) {
+        const wireX = x - 0.38 + i * 0.11;
+        addTube([[wireX, y + 0.09, z - 0.32], [wireX, y + 0.09, z + 0.32]], metal, 0.007, 1);
+      }
+      for (let i = 0; i < 4; i += 1) {
+        const wireZ = z - 0.24 + i * 0.16;
+        addTube([[x - 0.43, y + 0.1, wireZ], [x + 0.43, y + 0.1, wireZ]], metal, 0.007, 1);
+      }
+      [
+        [x - 0.42, z - 0.3],
+        [x + 0.42, z - 0.3],
+        [x - 0.42, z + 0.3],
+        [x + 0.42, z + 0.3]
+      ].forEach(([legX, legZ]) => addTube([[legX, y - 0.13, legZ], [legX, y + 0.18, legZ]], metal, 0.01, 1));
+
+      const loaf = new THREE.Mesh(
+        new THREE.SphereGeometry(0.24, 32, 18),
+        new THREE.MeshStandardMaterial({ color: '#b96f35', roughness: 0.86 })
+      );
+      loaf.scale.set(1.6, 0.55, 1);
+      loaf.position.set(x, y + 0.28, z);
+      loaf.castShadow = true;
+      scene.add(loaf);
+      for (let i = 0; i < 3; i += 1) {
+        const score = addBox(x - 0.18 + i * 0.18, y + 0.42, z + 0.04, 0.11, 0.012, 0.018, '#f0d79f', 0.9);
+        score.rotation.z = -0.3;
+      }
+      const steam = Array.from({ length: 5 }, (_, index) => {
+        const curve = new THREE.CatmullRomCurve3([
+          new THREE.Vector3(x - 0.24 + index * 0.12, y + 0.46, z),
+          new THREE.Vector3(x - 0.2 + index * 0.12, y + 0.62, z + 0.04),
+          new THREE.Vector3(x - 0.25 + index * 0.12, y + 0.8, z - 0.02)
+        ]);
+        const mesh = new THREE.Mesh(
+          new THREE.TubeGeometry(curve, 18, 0.006, 8),
+          new THREE.MeshStandardMaterial({ color: '#ffffff', transparent: true, opacity: 0.16, roughness: 0.2 })
+        );
+        scene.add(mesh);
+        return mesh;
+      });
+
+      return { loaf, steam };
+    };
+
     const createBrevilleOven = (x, y, z) => {
       const frontZ = z + 0.45;
       const body = addRoundedBox(x, y, z, 1.52, 0.9, 0.88, '#4f6474', 0.12, {
@@ -1497,7 +1609,7 @@ function HomeBreadScene({ model, schedule }) {
       })
     );
 
-    ['starter', 'hoppers', 'mixer', 'oven'].forEach((stationId) => {
+    ['starter', 'hoppers', 'mixer', 'oven', 'proof', 'cool'].forEach((stationId) => {
       stationMeshes[stationId].visible = false;
     });
     const starterStation = createStarterStation(-2.25, 0.66, 0.68);
@@ -1505,11 +1617,12 @@ function HomeBreadScene({ model, schedule }) {
     createIngredientHoppers(-2.2, 1.2, -0.55);
     const mixerStation = createMixerStation(-0.9, 0.64, -0.2);
     const mixerBowl = mixerStation.bowl;
+    const proofStation = createProofDrawer(0.15, 0.46, 0.75);
     const brevilleOven = createBrevilleOven(1.4, 0.62, -0.33);
     const oven = brevilleOven.body;
+    const coolingRack = createCoolingRack(2.28, 0.32, 0.72);
     addLabel('OVEN 18.9"W x 15.9"D x 10.9"H', 1.38, 1.14, 0.82, '#9c442e', [1.45, 0.32, 1]);
 
-    const proofGlow = addBox(0.15, 0.65, 0.75, 0.82, 0.06, 0.5, '#dfead1', 0.52);
     const cleanWave = addBox(0.55, 0.51, -1.02, 0.72, 0.035, 0.32, '#8fb3c7', 0.75);
 
     const pathPoints = homePathPoints.map((point) => new THREE.Vector3(...point));
@@ -1658,7 +1771,6 @@ function HomeBreadScene({ model, schedule }) {
       lower.rotation.z = pose.lower;
       upper.rotation.z = pose.upper;
       gripper.rotation.z = pose.grip;
-      proofGlow.material.opacity = stage.id === 'proof' ? 0.82 + Math.sin(elapsed * 3) * 0.08 : 0.24;
       cleanWave.material.opacity = stage.id === 'clean' ? 0.9 : 0.28;
       cleanWave.position.y = 0.51 + Math.sin(elapsed * 5) * 0.02;
       oven.material.emissive.set(stage.id === 'bake' ? '#6a2b15' : '#000000');
@@ -1679,6 +1791,25 @@ function HomeBreadScene({ model, schedule }) {
       );
       mixerStation.head.material.emissive.set(stage.id === 'mix' ? '#332600' : '#000000');
       mixerStation.head.material.emissiveIntensity = stage.id === 'mix' ? 0.22 : 0;
+      const proofProgress = stage.id === 'proof'
+        ? stageProgress
+        : (['bake', 'cool', 'clean'].includes(stage.id) ? 1 : stage.id === 'bulk' ? 0.35 : 0.12);
+      proofStation.dough.scale.set(1.05 + proofProgress * 0.42, 0.45 + proofProgress * 0.24, 0.86 + proofProgress * 0.18);
+      proofStation.dough.position.y = 0.53 + proofProgress * 0.08 + Math.sin(elapsed * 2.2) * 0.005;
+      proofStation.glass.material.opacity = stage.id === 'proof' ? 0.34 : 0.22;
+      proofStation.glow.material.opacity = stage.id === 'proof' ? 0.42 + Math.sin(elapsed * 3) * 0.08 : 0.18;
+      proofStation.glow.material.emissiveIntensity = stage.id === 'proof' ? 0.45 : 0.18;
+      proofStation.steam.forEach((wisp, index) => {
+        wisp.material.opacity = stage.id === 'proof' ? 0.22 + Math.sin(elapsed * 2 + index) * 0.04 : 0.06;
+        wisp.position.y = Math.sin(elapsed * 1.5 + index) * 0.025;
+      });
+      coolingRack.loaf.visible = ['cool', 'clean'].includes(stage.id) || (stage.id === 'bake' && stageProgress > 0.75);
+      coolingRack.loaf.scale.set(1.55, 0.54 + (stage.id === 'cool' ? Math.sin(elapsed * 1.7) * 0.01 : 0), 0.98);
+      coolingRack.steam.forEach((wisp, index) => {
+        wisp.visible = coolingRack.loaf.visible;
+        wisp.material.opacity = stage.id === 'cool' ? 0.2 + Math.sin(elapsed * 2.3 + index) * 0.04 : 0.06;
+        wisp.position.y = Math.sin(elapsed * 1.7 + index) * 0.035;
+      });
       scene.rotation.y = Math.sin(elapsed * 0.16) * 0.09;
       arrowMarkers.forEach(({ cone, pathT: arrowT }) => {
         const here = curve.getPointAt(arrowT);
