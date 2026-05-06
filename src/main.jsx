@@ -20,10 +20,31 @@ import './styles.css';
 
 const flourCostPerG = 11.34 / (12 * 453.592);
 const saltCostPerG = 3.39 / (53 * 28.3495);
+const homeDayStartMinutes = 18 * 60;
 
 const recipes = {
   artisan: { label: '650g sourdough loaf', flourG: 360, waterG: 270, starterG: 70, saltG: 8, bakeMin: 38 },
   sliced: { label: '750g sliced school loaf', flourG: 420, waterG: 300, starterG: 80, saltG: 10, bakeMin: 42 }
+};
+
+const homeCellDefaults = {
+  ovenCost: 349.95,
+  ovenWatts: 1800,
+  robotArmCost: 799,
+  counterCellCost: 950,
+  starterStationCost: 85,
+  ingredientHopperCost: 260,
+  toolDockCost: 165,
+  proofDrawerCost: 220,
+  controlsCost: 420,
+  cleaningDockCost: 180,
+  ovenKwhPerLoaf: 1.35,
+  idleKwhPerDay: 0.08,
+  utilityKwhPerBake: 0.2,
+  cleaningWaterPerBakeL: 2.5,
+  starterFeedFlourG: 30,
+  starterFeedWaterMl: 30,
+  parchmentBagCost: 0.1
 };
 
 const defaultAssumptions = {
@@ -70,7 +91,48 @@ const ingredientFeed = [
   { label: 'Salt', short: 'NaCl', color: '#f7f7ef' }
 ];
 
-const pages = ['overview', 'model', 'automation'];
+const homeWorkflowTemplates = [
+  { id: 'feed', name: 'Feed Starter', minutes: 10, detail: 'Flour and water dose into the starter jar for the next-day bake.' },
+  { id: 'starter', name: 'Starter Peak', minutes: 480, detail: 'The jar tracks rise height, warmth, and activity until the culture peaks.' },
+  { id: 'mix', name: 'Dose + Mix', minutes: 25, detail: 'Flour, water, starter, and salt meter into a compact mixing bowl.' },
+  { id: 'bulk', name: 'Bulk + Folds', minutes: 220, detail: 'Dough rests while the arm performs timed folds without manual handling.' },
+  { id: 'proof', name: 'Final Proof', minutes: 135, detail: 'A covered proof drawer holds the loaf until the oven is ready.' },
+  { id: 'bake', name: 'Bake', getMinutes: (model) => model.bakeMinutes, detail: (model) => `Breville oven runs ${model.ovenCycles} one-loaf bake cycle${model.ovenCycles === 1 ? '' : 's'} at countertop scale.` },
+  { id: 'cool', name: 'Cool', minutes: 75, detail: 'The arm moves finished bread to a small cooling rack before slicing or storage.' },
+  { id: 'clean', name: 'Rinse Tools', minutes: 12, detail: 'Tools return to a rinse dock and the crumb tray is staged for cleanup.' }
+];
+
+const homeStageFocus = {
+  feed: { station: 'starter', callout: 'Feed starter culture' },
+  starter: { station: 'starter', callout: 'Watch starter rise' },
+  mix: { station: 'mixer', callout: 'Dose ingredients + mix' },
+  bulk: { station: 'mixer', callout: 'Timed folds during bulk' },
+  proof: { station: 'proof', callout: 'Covered proof drawer' },
+  bake: { station: 'oven', callout: 'Countertop bake cycle' },
+  cool: { station: 'cool', callout: 'Cool before handling' },
+  clean: { station: 'clean', callout: 'Rinse dock cleanup' }
+};
+
+const homeStations = [
+  { id: 'starter', label: 'STARTER', position: [-2.25, 0.55, 0.68], size: [0.62, 0.95, 0.62], color: '#d0a85c', labelPosition: [-2.25, 1.45, 0.68] },
+  { id: 'hoppers', label: 'HOPPERS', position: [-2.2, 0.72, -0.55], size: [0.9, 1.05, 0.55], color: '#efe3bf', labelPosition: [-2.2, 1.55, -0.55] },
+  { id: 'mixer', label: 'MIX', position: [-0.9, 0.4, -0.2], size: [0.82, 0.56, 0.78], color: '#596a70', labelPosition: [-0.9, 1.02, -0.2] },
+  { id: 'proof', label: 'PROOF', position: [0.15, 0.36, 0.75], size: [0.95, 0.44, 0.66], color: '#71865c', labelPosition: [0.15, 0.95, 0.75] },
+  { id: 'oven', label: 'BREVILLE', position: [1.4, 0.6, -0.33], size: [1.25, 0.9, 0.82], color: '#516171', labelPosition: [1.4, 1.42, -0.33] },
+  { id: 'cool', label: 'COOL', position: [2.28, 0.32, 0.72], size: [0.8, 0.32, 0.7], color: '#9c442e', labelPosition: [2.28, 0.88, 0.72] },
+  { id: 'clean', label: 'RINSE', position: [0.55, 0.27, -1.02], size: [0.9, 0.34, 0.46], color: '#8fb3c7', labelPosition: [0.55, 0.82, -1.02] }
+];
+
+const homePathPoints = [
+  [-2.25, 0.36, 0.58],
+  [-0.9, 0.35, -0.1],
+  [0.15, 0.35, 0.68],
+  [1.4, 0.35, -0.35],
+  [2.28, 0.35, 0.7],
+  [0.55, 0.35, -0.95]
+];
+
+const pages = ['overview', 'model', 'automation', 'home'];
 const assumptionStorageKey = 'dailybreadAssumptions';
 
 const assumptionMinimums = {
@@ -185,6 +247,34 @@ function getWorkflowSchedule(model) {
   return { stages, totalMinutes };
 }
 
+function getHomeWorkflowSchedule(model) {
+  const rawStages = homeWorkflowTemplates.map((template) => {
+    const minutes = template.getMinutes ? template.getMinutes(model) : template.minutes;
+    return {
+      ...template,
+      minutes,
+      duration: formatDuration(minutes),
+      detail: typeof template.detail === 'function' ? template.detail(model) : template.detail
+    };
+  });
+  const totalMinutes = rawStages.reduce((sum, stage) => sum + stage.minutes, 0);
+  let cursor = 0;
+  const stages = rawStages.map((stage) => {
+    const startMinute = cursor;
+    cursor += stage.minutes;
+    return {
+      ...stage,
+      startMinute,
+      endMinute: cursor,
+      startLabel: formatWallClock(homeDayStartMinutes + startMinute),
+      endLabel: formatWallClock(homeDayStartMinutes + cursor),
+      share: stage.minutes / totalMinutes
+    };
+  });
+
+  return { stages, totalMinutes };
+}
+
 function getStageIndexForPhase(schedule, phase) {
   const currentMinute = (clampNumber(phase, 0, 0, 100) / 100) * schedule.totalMinutes;
   const index = schedule.stages.findIndex((stage) => currentMinute >= stage.startMinute && currentMinute < stage.endMinute);
@@ -232,6 +322,43 @@ function getAutomationInsights(model, schedule, multiplier) {
     ['Main constraint', longestStage.name, `${longestStage.name} consumes ${formatDuration(longestStage.minutes)} of the modeled day.`],
     ['Oven strategy', `${model.ovenUnits} oven${model.ovenUnits === 1 ? '' : 's'}`, `${model.ovenLoads} loads collapse into ${model.bakeRounds} bake rounds.`],
     ['Layout', layout, `${model.targetLoaves} loaves across x${multiplier} scale.`]
+  ];
+}
+
+function getHomeTelemetry(model, schedule, phase, stageIndex) {
+  const currentMinute = (clampNumber(phase, 0, 0, 100) / 100) * schedule.totalMinutes;
+  const currentStage = schedule.stages[stageIndex] || schedule.stages[0];
+  const starterStage = schedule.stages.find((stage) => stage.id === 'starter');
+  const bakeStage = schedule.stages.find((stage) => stage.id === 'bake');
+  const starterProgress = starterStage
+    ? clampNumber((currentMinute - starterStage.startMinute) / starterStage.minutes, currentMinute > starterStage.endMinute ? 1 : 0, 0, 1)
+    : 0;
+  const bakeProgress = bakeStage
+    ? clampNumber((currentMinute - bakeStage.startMinute) / bakeStage.minutes, currentMinute > bakeStage.endMinute ? 1 : 0, 0, 1)
+    : 0;
+  const completedLoaves = currentMinute < bakeStage?.startMinute
+    ? 0
+    : Math.min(model.loavesPerBake, Math.max(0, Math.ceil(bakeProgress * model.loavesPerBake)));
+
+  return {
+    clock: formatWallClock(homeDayStartMinutes + currentMinute),
+    stageWindow: `${currentStage.startLabel}-${currentStage.endLabel}`,
+    starterRise: `${Math.round(starterProgress * 100)}%`,
+    completedLoaves,
+    bakeCycle: currentStage.id === 'bake' ? `${Math.max(1, Math.ceil(bakeProgress * model.ovenCycles))}/${model.ovenCycles}` : `0/${model.ovenCycles}`,
+    cleanStatus: currentStage.id === 'clean' ? 'Rinse dock active' : 'Queued'
+  };
+}
+
+function getHomeInsights(model, schedule) {
+  const bakeStage = schedule.stages.find((stage) => stage.id === 'bake');
+  const cleanStage = schedule.stages.find((stage) => stage.id === 'clean');
+  return [
+    ['Ready window', bakeStage.endLabel, `Cooling finishes at ${cleanStage.startLabel}; cleanup wraps at ${cleanStage.endLabel}.`],
+    ['Weekly output', `${model.weeklyLoaves} loaves`, `${model.bakesPerWeek} bake day${model.bakesPerWeek === 1 ? '' : 's'} per week at ${model.loavesPerBake} loaf${model.loavesPerBake === 1 ? '' : 's'} per day.`],
+    ['Counter space', '~5 ft wide', 'Modeled as a countertop cell with ingredient hoppers, jar station, proof drawer, oven, and rinse dock.'],
+    ['Main constraint', 'Starter time', 'Most of the schedule is passive fermentation; the robotic work is short but precisely timed.'],
+    ['Cost signal', formatSmallMoney(model.unitCost), `Ingredient and energy cost per loaf before equipment payback.`]
   ];
 }
 
@@ -327,6 +454,20 @@ function getEquipmentRows(multiplier, assumptions) {
   ];
 }
 
+function getHomeEquipmentRows() {
+  return [
+    ['Breville BOV860DBL Smart Oven Air Fryer', 1, homeCellDefaults.ovenCost, 'Damson Blue countertop oven reference; model BOV860DBL1BUS1.'],
+    ['Compact 6-axis robot arm allowance', 1, homeCellDefaults.robotArmCost, 'Elephant Robotics mechArm Pi reference price basis.'],
+    ['Countertop enclosure and washable workcell', 1, homeCellDefaults.counterCellCost, 'Food-safe panels, guards, tray rails, and under-cell cable management.'],
+    ['Starter jar station with load cell', 1, homeCellDefaults.starterStationCost, 'Culture jar, scale, lid actuator, rise marker, and temperature sensor allowance.'],
+    ['Ingredient hoppers and micro-dosing augers', 1, homeCellDefaults.ingredientHopperCost, 'Flour, salt, starter, and water dosing concept.'],
+    ['Food-safe tool dock and end effectors', 1, homeCellDefaults.toolDockCost, 'Scraper, gripper, peel, and jar-lid tool allowance.'],
+    ['Compact proof drawer / humidity insert', 1, homeCellDefaults.proofDrawerCost, 'Covered proofing drawer inside the cell.'],
+    ['Sensors, controls, pumps, and safety interlocks', 1, homeCellDefaults.controlsCost, 'Controller, recipe logic, water pump, door sensing, and status lighting.'],
+    ['Rinse tray and crumb-management dock', 1, homeCellDefaults.cleaningDockCost, 'Low-water tool rinse, removable crumb tray, and drain-pan allowance.']
+  ];
+}
+
 function computeModel({ loaves, multiplier, school, sliced, assumptions }) {
   const safeAssumptions = sanitizeAssumptions(assumptions);
   const safeLoaves = clampInteger(loaves, 50, 1, 10000);
@@ -391,6 +532,59 @@ function computeModel({ loaves, multiplier, school, sliced, assumptions }) {
   };
 }
 
+function computeHomeModel({ loavesPerBake, bakesPerWeek, assumptions }) {
+  const safeAssumptions = sanitizeAssumptions(assumptions);
+  const safeLoavesPerBake = clampInteger(loavesPerBake, 1, 1, 2);
+  const safeBakesPerWeek = clampInteger(bakesPerWeek, 4, 1, 7);
+  const recipe = recipes.artisan;
+  const weeklyLoaves = safeLoavesPerBake * safeBakesPerWeek;
+  const ovenCycles = safeLoavesPerBake;
+  const bakeMinutes = ovenCycles * (recipe.bakeMin + 22);
+  const flourG = recipe.flourG * weeklyLoaves + homeCellDefaults.starterFeedFlourG * 7;
+  const saltG = recipe.saltG * weeklyLoaves;
+  const starterG = recipe.starterG * weeklyLoaves;
+  const doughWaterL = (recipe.waterG * weeklyLoaves) / 1000;
+  const starterFeedWaterL = (homeCellDefaults.starterFeedWaterMl * 7) / 1000;
+  const cleaningWaterL = homeCellDefaults.cleaningWaterPerBakeL * safeBakesPerWeek;
+  const waterL = doughWaterL + starterFeedWaterL + cleaningWaterL;
+  const flourCost = flourG * flourCostPerG;
+  const saltCost = saltG * saltCostPerG;
+  const electricityKwh = weeklyLoaves * homeCellDefaults.ovenKwhPerLoaf
+    + safeBakesPerWeek * homeCellDefaults.utilityKwhPerBake
+    + 7 * homeCellDefaults.idleKwhPerDay;
+  const electricityCost = electricityKwh * safeAssumptions.electricityRate;
+  const packagingCost = weeklyLoaves * homeCellDefaults.parchmentBagCost;
+  const weeklyCost = flourCost + saltCost + electricityCost + packagingCost;
+  const unitCost = weeklyCost / weeklyLoaves;
+  const equipmentRows = getHomeEquipmentRows();
+  const capex = equipmentRows.reduce((sum, [, qty, unit]) => sum + qty * unit, 0);
+
+  return {
+    loavesPerBake: safeLoavesPerBake,
+    bakesPerWeek: safeBakesPerWeek,
+    weeklyLoaves,
+    recipe,
+    ovenCycles,
+    bakeMinutes,
+    flourKg: flourG / 1000,
+    saltG,
+    starterG,
+    doughWaterL,
+    starterFeedWaterL,
+    cleaningWaterL,
+    waterL,
+    flourCost,
+    saltCost,
+    electricityKwh,
+    electricityCost,
+    packagingCost,
+    weeklyCost,
+    unitCost,
+    capex,
+    equipmentRows
+  };
+}
+
 function App() {
   const initialState = useMemo(() => readInitialState(), []);
   const [page, setPage] = useState(initialState.page);
@@ -435,6 +629,7 @@ function App() {
         />
       )}
       {page === 'automation' && <Automation model={model} multiplier={multiplier} setMultiplier={setMultiplier} assumptions={safeAssumptions} />}
+      {page === 'home' && <HomeDailyBread assumptions={safeAssumptions} />}
       <Footer />
     </main>
   );
@@ -450,7 +645,8 @@ function Nav({ page, setPage }) {
         {[
           ['overview', 'Project'],
           ['model', 'Model'],
-          ['automation', 'Automation']
+          ['automation', 'Automation'],
+          ['home', 'Home Daily Bread']
         ].map(([id, label]) => (
           <button className={page === id ? 'active' : ''} onClick={() => setPage(id)} key={id}>
             {label}
@@ -475,6 +671,9 @@ function Overview({ model, setPage }) {
             </button>
             <button className="secondary" onClick={() => setPage('automation')}>
               View container model
+            </button>
+            <button className="secondary" onClick={() => setPage('home')}>
+              Explore home cell
             </button>
           </div>
           <div className="chips">
@@ -670,6 +869,564 @@ function AssumptionEditor({ assumptions, setAssumptions }) {
       {fields.map(([key, label, step, min]) => (
         <NumberInput key={key} label={label} value={assumptions[key]} step={step} min={min} onChange={(value) => update(key, value)} />
       ))}
+    </div>
+  );
+}
+
+function HomeDailyBread({ assumptions }) {
+  const [loavesPerBake, setLoavesPerBake] = useState(1);
+  const [bakesPerWeek, setBakesPerWeek] = useState(4);
+  const model = useMemo(() => computeHomeModel({ loavesPerBake, bakesPerWeek, assumptions }), [loavesPerBake, bakesPerWeek, assumptions]);
+  const schedule = useMemo(() => getHomeWorkflowSchedule(model), [model]);
+  const insights = getHomeInsights(model, schedule);
+  const weeklyRows = [
+    ['Flour', `${format1(model.flourKg)} kg`, formatSmallMoney(model.flourCost)],
+    ['Salt', `${format1(model.saltG)} g`, formatSmallMoney(model.saltCost)],
+    ['Starter culture used', `${format1(model.starterG)} g`, 'maintained daily'],
+    ['Dough water', `${format1(model.doughWaterL)} L`, 'ingredient water'],
+    ['Starter feed water', `${format1(model.starterFeedWaterL)} L`, 'daily refresh'],
+    ['Cleaning water', `${format1(model.cleaningWaterL)} L`, `${model.bakesPerWeek} rinse cycles`],
+    ['Electricity', `${format1(model.electricityKwh)} kWh`, formatSmallMoney(model.electricityCost)],
+    ['Parchment / storage bags', `${model.weeklyLoaves} uses`, formatSmallMoney(model.packagingCost)]
+  ];
+  const supplies = [
+    ['King Arthur bread flour, 12 lb bag', Math.max(1, Math.ceil((model.flourKg * 2.20462) / 12)), 11.34, `${format1(model.flourKg)} kg/week including starter feed`],
+    ['Morton coarse kosher salt, 53 oz', Math.max(1, Math.ceil((model.saltG / 28.3495) / 53)), 3.39, `${format1(model.saltG)} g/week`],
+    ['Electricity allowance', Math.ceil(model.electricityKwh), assumptions.electricityRate, 'Editable utility rate from the main model'],
+    ['Parchment or bread bag allowance', model.weeklyLoaves, homeCellDefaults.parchmentBagCost, 'Small consumable for storage or gifting']
+  ];
+
+  return (
+    <section className="page homePage">
+      <div className="pageHead">
+        <p className="eyebrow">Home Daily Bread</p>
+        <h1>Countertop sourdough micro-cell for starter, proof, bake, and cleanup.</h1>
+        <p>Model a home-sized automated unit built around a Breville BOV860DBL Smart Oven Air Fryer, a compact robotic arm, ingredient hoppers, a starter jar station, proof drawer, rinse dock, timing, water, electricity, and weekly ingredient cost.</p>
+      </div>
+      <div className="pitchStrip">
+        <Metric label="Weekly output" value={`${model.weeklyLoaves} loaves`} />
+        <Metric label="Ready window" value={schedule.stages.find((stage) => stage.id === 'cool')?.endLabel || 'Modeled'} />
+        <Metric label="Concept CAPEX" value={formatMoney(model.capex)} />
+        <Metric label="Cost / loaf" value={formatSmallMoney(model.unitCost)} />
+      </div>
+      <section className="workflowShowcase homeShowcase">
+        <div className="workflowHeader">
+          <div>
+            <p className="eyebrow">Countertop cell in motion</p>
+            <h2>Watch starter feeding, timed folds, proofing, baking, cooling, and rinse mode.</h2>
+            <div className="ingredientLegend">
+              {ingredientFeed.map((item) => (
+                <span key={item.label}>
+                  <b style={{ background: item.color }}>{item.short}</b>
+                  {item.label}
+                </span>
+              ))}
+            </div>
+          </div>
+          <div className="homeControls">
+            <Control label="Loaves per bake day" value={loavesPerBake} min="1" max="2" onChange={setLoavesPerBake} />
+            <Control label="Bake days per week" value={bakesPerWeek} min="1" max="7" onChange={setBakesPerWeek} />
+          </div>
+        </div>
+        <HomeBreadScene model={model} schedule={schedule} />
+        <AutomationInsights insights={insights} />
+      </section>
+      <div className="autoGrid">
+        <Panel title="Weekly Home Operating Logic">
+          <div className="kpiRow">
+            <Metric label="Oven cycles" value={`${model.ovenCycles}/day`} />
+            <Metric label="Bake window" value={formatDuration(model.bakeMinutes)} />
+            <Metric label="Water/week" value={`${format1(model.waterL)} L`} />
+            <Metric label="Electricity/week" value={`${format1(model.electricityKwh)} kWh`} />
+          </div>
+          <table>
+            <tbody>
+              {weeklyRows.map((row) => (
+                <tr key={row[0]}>
+                  <th>{row[0]}</th>
+                  <td>{row[1]}</td>
+                  <td>{row[2]}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Panel>
+        <Panel title="Micro-Cell Timing">
+          <div className="timingGrid">
+            {schedule.stages.map((stage) => (
+              <Metric key={stage.id} label={stage.name} value={`${stage.startLabel}-${stage.endLabel}`} />
+            ))}
+          </div>
+          <p className="note">The timing assumes an evening starter feed and a next-day loaf. The robotic arm is not doing work for the full schedule; most of the value is consistent dosing, reminders, folds, transfer, oven staging, and cleanup prompts.</p>
+        </Panel>
+      </div>
+      <Panel title="Home Cell References and Purchase List">
+        <div className="referenceGrid">
+          <section className="referenceGroup">
+            <h3>Reference Items</h3>
+            <ul>
+              <li>Breville BOV860DBL Smart Oven Air Fryer, Damson Blue: modeled at {formatSmallMoney(homeCellDefaults.ovenCost)}.</li>
+              <li>Retailer listing reference: model BOV860DBL1BUS1, SKU 6514381, 0.8 cu ft capacity, 120 V, 1800 W.</li>
+              <li>Manufacturer dimensions reference: 18.9 x 15.9 x 10.9 in; retailer listing also reports Damson Blue dimensions of 18.75 W x 13.25 D x 11 H in.</li>
+              <li>Elephant Robotics mechArm Pi compact 6-axis arm reference: {formatMoney(homeCellDefaults.robotArmCost)} as the robotic handling allowance.</li>
+              <li>King Arthur Unbleached Bread Flour, 12 lb bag: $11.34; Morton Coarse Kosher Salt, 53 oz: $3.39.</li>
+            </ul>
+          </section>
+          <section className="referenceGroup">
+            <h3>Design Assumptions</h3>
+            <ul>
+              <li>One countertop oven cycle per sourdough loaf; two-loaf days run two oven cycles.</li>
+              <li>Daily starter maintenance adds {homeCellDefaults.starterFeedFlourG}g flour and {homeCellDefaults.starterFeedWaterMl}ml water per day.</li>
+              <li>Cleaning mode uses {format1(homeCellDefaults.cleaningWaterPerBakeL)} L per bake day for a rinse tray and removable tool dock.</li>
+              <li>Energy assumes {format1(homeCellDefaults.ovenKwhPerLoaf)} kWh per loaf plus sensor, pump, and idle allowance.</li>
+              <li>The home cell is a concept model only; food-safe robotics, oven-door actuation, and unattended baking require engineering and safety validation.</li>
+            </ul>
+          </section>
+        </div>
+        <div className="purchaseGrid wide">
+          <PurchaseTable title="Weekly Consumables" rows={supplies} />
+          <PurchaseTable title="Countertop Micro-Cell Equipment" rows={model.equipmentRows} />
+        </div>
+      </Panel>
+    </section>
+  );
+}
+
+function HomeBreadScene({ model, schedule }) {
+  const mount = useRef(null);
+  const [playing, setPlaying] = useState(true);
+  const [phase, setPhase] = useState(0);
+  const [stageIndex, setStageIndex] = useState(0);
+  const [sceneError, setSceneError] = useState(false);
+  const currentStage = schedule.stages[stageIndex] || schedule.stages[0];
+  const telemetry = getHomeTelemetry(model, schedule, phase, stageIndex);
+  const playingRef = useRef(playing);
+  const phaseRef = useRef(0);
+  const stageRef = useRef(0);
+
+  useEffect(() => {
+    playingRef.current = playing;
+  }, [playing]);
+
+  useEffect(() => {
+    phaseRef.current = phase;
+  }, [phase]);
+
+  useEffect(() => {
+    const el = mount.current;
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color('#f7f2e8');
+    scene.position.x = -1.08;
+    const camera = new THREE.PerspectiveCamera(45, el.clientWidth / el.clientHeight, 0.1, 100);
+    const cameraTarget = new THREE.Vector3(0.62, 0.58, 0);
+    camera.position.set(0.72, 3.35, 10.15);
+    camera.lookAt(cameraTarget);
+
+    const rendererCanvas = document.createElement('canvas');
+    const contextOptions = { antialias: true };
+    const webglContext = rendererCanvas.getContext('webgl2', contextOptions) || rendererCanvas.getContext('webgl', contextOptions);
+    if (!webglContext) {
+      setSceneError(true);
+      return undefined;
+    }
+
+    let renderer;
+    try {
+      renderer = new THREE.WebGLRenderer({ canvas: rendererCanvas, context: webglContext, antialias: true });
+      setSceneError(false);
+    } catch {
+      setSceneError(true);
+      return undefined;
+    }
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(el.clientWidth, el.clientHeight);
+    el.appendChild(renderer.domElement);
+
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x7d6a50, 2.5));
+    const keyLight = new THREE.DirectionalLight(0xffffff, 1.45);
+    keyLight.position.set(3, 5, 4);
+    scene.add(keyLight);
+
+    const addBox = (x, y, z, w, h, d, color, opacity = 1) => {
+      const material = new THREE.MeshStandardMaterial({ color, roughness: 0.66, transparent: opacity < 1, opacity });
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
+      mesh.position.set(x, y, z);
+      scene.add(mesh);
+      return mesh;
+    };
+
+    const addCylinder = (x, y, z, radius, height, color, opacity = 1) => {
+      const material = new THREE.MeshStandardMaterial({ color, roughness: 0.58, transparent: opacity < 1, opacity });
+      const mesh = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, height, 32), material);
+      mesh.position.set(x, y, z);
+      scene.add(mesh);
+      return mesh;
+    };
+
+    const addLabel = (text, x, y, z, accent = '#203734', scale = [1.15, 0.32, 1]) => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 560;
+      canvas.height = 150;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = 'rgba(255, 250, 240, 0.94)';
+      ctx.roundRect(18, 18, 524, 88, 18);
+      ctx.fill();
+      ctx.strokeStyle = accent;
+      ctx.lineWidth = 7;
+      ctx.stroke();
+      ctx.fillStyle = '#1a2421';
+      ctx.font = '800 36px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(text, 280, 76);
+      const texture = new THREE.CanvasTexture(canvas);
+      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true }));
+      sprite.position.set(x, y, z);
+      sprite.scale.set(...scale);
+      scene.add(sprite);
+      return sprite;
+    };
+
+    const addDimensionLine = (start, end, label, labelPosition, tickAxis = 'z') => {
+      const material = new THREE.LineBasicMaterial({ color: '#9c442e' });
+      scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([start, end]), material));
+      const tickSize = 0.18;
+      [start, end].forEach((point) => {
+        const dims = tickAxis === 'x' ? [tickSize, 0.035, 0.035] : tickAxis === 'y' ? [0.035, tickSize, 0.035] : [0.035, 0.035, tickSize];
+        addBox(point.x, point.y, point.z, dims[0], dims[1], dims[2], '#9c442e');
+      });
+      addLabel(label, labelPosition.x, labelPosition.y, labelPosition.z, '#9c442e', [1.25, 0.34, 1]);
+    };
+
+    const addIngredientBadge = (item, x, y, z) => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 256;
+      canvas.height = 256;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = item.color;
+      ctx.beginPath();
+      ctx.arc(128, 108, 68, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#1a2421';
+      ctx.lineWidth = 8;
+      ctx.stroke();
+      ctx.fillStyle = '#1a2421';
+      ctx.font = item.short.length > 1 ? '800 42px Arial' : '900 72px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(item.short, 128, 126);
+      ctx.font = '700 24px Arial';
+      ctx.fillText(item.label, 128, 214);
+      const texture = new THREE.CanvasTexture(canvas);
+      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true }));
+      sprite.position.set(x, y, z);
+      sprite.scale.set(0.48, 0.48, 1);
+      scene.add(sprite);
+      return sprite;
+    };
+
+    addBox(0, -0.07, 0, 5.55, 0.14, 2.65, '#d8c89f');
+    addBox(0, 1.08, -1.34, 5.55, 2.24, 0.05, '#d8c89f', 0.28);
+    addBox(-2.82, 1.08, 0, 0.05, 2.24, 2.65, '#d8c89f', 0.2);
+    addBox(2.82, 1.08, 0, 0.05, 2.24, 2.65, '#d8c89f', 0.2);
+    addLabel('HOME SOURDOUGH CELL', 0, 1.96, 1.16, '#203734', [1.72, 0.4, 1]);
+    addDimensionLine(new THREE.Vector3(-2.75, 0.05, 1.52), new THREE.Vector3(2.75, 0.05, 1.52), '~5 ft counter width', new THREE.Vector3(0, 0.34, 1.78), 'z');
+    addDimensionLine(new THREE.Vector3(2.9, 0.05, -1.28), new THREE.Vector3(2.9, 0.05, 1.28), '~30 in depth', new THREE.Vector3(2.45, 0.38, 0.05), 'x');
+    addDimensionLine(new THREE.Vector3(-2.96, -0.02, -1.34), new THREE.Vector3(-2.96, 2.12, -1.34), '~34 in height', new THREE.Vector3(-2.54, 1.15, -1.18), 'x');
+
+    const stationMeshes = Object.fromEntries(
+      homeStations.map((station) => {
+        const [x, y, z] = station.position;
+        const [w, h, d] = station.size;
+        return [station.id, addBox(x, y, z, w, h, d, station.color)];
+      })
+    );
+    homeStations.forEach((station) => addLabel(station.label, ...station.labelPosition, '#203734', [1.05, 0.3, 1]));
+    const focusMeshes = Object.fromEntries(
+      homeStations.map((station) => {
+        const [x, y, z] = station.position;
+        const [w, h, d] = station.size;
+        const mesh = addBox(x, y + 0.03, z, w + 0.16, h + 0.14, d + 0.16, '#d9a73a', 0.23);
+        mesh.visible = false;
+        return [station.id, mesh];
+      })
+    );
+    const callouts = Object.fromEntries(
+      Object.entries(homeStageFocus).map(([stage, focus]) => {
+        const station = homeStations.find((item) => item.id === focus.station);
+        const [x, y, z] = station.labelPosition;
+        const sprite = addLabel(focus.callout, x, y + 0.42, z, '#9c442e', [1.35, 0.36, 1]);
+        sprite.visible = false;
+        return [stage, { sprite, baseY: sprite.position.y }];
+      })
+    );
+
+    const oven = stationMeshes.oven;
+    addBox(1.4, 0.61, -0.78, 1.05, 0.62, 0.04, '#1a2421', 0.72);
+    addBox(1.4, 0.96, -0.82, 0.64, 0.05, 0.05, '#d9a73a');
+    addBox(1.9, 0.86, -0.84, 0.18, 0.12, 0.05, '#dfead1');
+    addLabel('18.9 x 15.9 x 10.9 in', 1.35, 0.16, -1.16, '#9c442e', [1.35, 0.34, 1]);
+
+    const starterGlass = addCylinder(-2.25, 0.66, 0.68, 0.24, 0.78, '#ffffff', 0.34);
+    const starterFill = addCylinder(-2.25, 0.36, 0.68, 0.2, 0.24, '#d0a85c', 0.88);
+    starterGlass.material.metalness = 0.05;
+    addCylinder(-2.25, 1.08, 0.68, 0.25, 0.06, '#596a70');
+    addLabel('LIVE STARTER', -2.25, 0.18, 1.08, '#d0a85c', [1.05, 0.3, 1]);
+
+    const hopperTops = [
+      [-2.48, 1.28, -0.55, '#efe3bf'],
+      [-2.19, 1.28, -0.55, '#8fb3c7'],
+      [-1.9, 1.28, -0.55, '#f7f7ef']
+    ];
+    hopperTops.forEach(([x, y, z, color]) => {
+      const cone = new THREE.Mesh(new THREE.ConeGeometry(0.15, 0.28, 4), new THREE.MeshStandardMaterial({ color, roughness: 0.72 }));
+      cone.position.set(x, y, z);
+      cone.rotation.y = Math.PI / 4;
+      scene.add(cone);
+    });
+
+    const mixerBowl = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.25, 0.34, 32), new THREE.MeshStandardMaterial({ color: '#f0e0b5', roughness: 0.78 }));
+    mixerBowl.position.set(-0.9, 0.64, -0.2);
+    scene.add(mixerBowl);
+
+    const proofGlow = addBox(0.15, 0.65, 0.75, 0.82, 0.06, 0.5, '#dfead1', 0.52);
+    const cleanWave = addBox(0.55, 0.51, -1.02, 0.72, 0.035, 0.32, '#8fb3c7', 0.75);
+
+    const pathPoints = homePathPoints.map((point) => new THREE.Vector3(...point));
+    const curve = new THREE.CatmullRomCurve3(pathPoints);
+    scene.add(new THREE.Mesh(
+      new THREE.TubeGeometry(curve, 80, 0.018, 8),
+      new THREE.MeshStandardMaterial({ color: '#71865c', emissive: '#314200', emissiveIntensity: 0.12 })
+    ));
+    const arrowMarkers = [0.18, 0.38, 0.58, 0.78].map((pathT) => {
+      const cone = new THREE.Mesh(new THREE.ConeGeometry(0.075, 0.22, 20), new THREE.MeshStandardMaterial({ color: '#71865c', roughness: 0.55 }));
+      cone.rotation.x = Math.PI / 2;
+      cone.position.copy(curve.getPointAt(pathT));
+      scene.add(cone);
+      return { cone, pathT };
+    });
+
+    const dough = new THREE.Group();
+    const loaf = new THREE.Mesh(new THREE.SphereGeometry(0.2, 28, 16), new THREE.MeshStandardMaterial({ color: '#d0a85c', roughness: 0.88 }));
+    loaf.scale.set(1.35, 0.7, 0.9);
+    dough.add(loaf);
+    const tray = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.045, 0.34), new THREE.MeshStandardMaterial({ color: '#596a70', roughness: 0.62 }));
+    tray.position.set(0, -0.13, 0);
+    dough.add(tray);
+    scene.add(dough);
+
+    const ingredientSources = ingredientFeed.map((item, index) => ({
+      item,
+      start: new THREE.Vector3(-2.72 + index * 0.28, 1.33, -0.92),
+      starterEnd: new THREE.Vector3(-2.25, 1.16, 0.68),
+      mixerEnd: new THREE.Vector3(-0.9, 0.92, -0.2),
+      badge: addIngredientBadge(item, -2.72 + index * 0.28, 1.33, -0.92)
+    }));
+
+    const arm = new THREE.Group();
+    arm.position.set(-0.05, 0.16, 0.04);
+    const armMat = new THREE.MeshStandardMaterial({ color: '#d9a73a', metalness: 0.24, roughness: 0.42 });
+    const armBase = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.23, 0.16), armMat);
+    arm.add(armBase);
+    const lower = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.78, 0.12), armMat);
+    lower.position.set(0.2, 0.4, 0);
+    lower.rotation.z = -0.42;
+    arm.add(lower);
+    const upper = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.6, 0.1), armMat);
+    upper.position.set(0.5, 0.72, 0);
+    upper.rotation.z = 0.68;
+    arm.add(upper);
+    const gripper = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.05, 0.12), armMat);
+    gripper.position.set(0.76, 0.94, 0);
+    arm.add(gripper);
+    scene.add(arm);
+    addLabel('COMPACT ARM', -0.08, 1.45, 0.18, '#d9a73a', [1.25, 0.34, 1]);
+
+    const poseByStage = {
+      feed: { y: -1.55, z: -0.05, lower: -0.78, upper: 1.08, grip: -0.12 },
+      starter: { y: -1.15, z: 0, lower: -0.36, upper: 0.58, grip: 0 },
+      mix: { y: -0.75, z: -0.03, lower: -0.62, upper: 0.86, grip: -0.08 },
+      bulk: { y: -0.45, z: 0.03, lower: -0.72, upper: 1.02, grip: 0.12 },
+      proof: { y: 0.32, z: 0.02, lower: -0.48, upper: 0.74, grip: 0 },
+      bake: { y: 1.08, z: -0.04, lower: -0.72, upper: 1.04, grip: -0.1 },
+      cool: { y: 1.42, z: 0.04, lower: -0.54, upper: 0.84, grip: 0.08 },
+      clean: { y: 2.55, z: 0.1, lower: -0.2, upper: 0.36, grip: 0.2 }
+    };
+    const pathByStage = {
+      feed: 0.02,
+      starter: 0.08,
+      mix: 0.24,
+      bulk: 0.32,
+      proof: 0.47,
+      bake: 0.67,
+      cool: 0.83,
+      clean: 0.98
+    };
+
+    let raf;
+    let lastPhaseUiUpdate = 0;
+    let lastElapsed = 0;
+    const startedAt = performance.now();
+
+    const applyPhase = (t, elapsed) => {
+      const nextStage = getStageIndexForPhase(schedule, t * 100);
+      const stage = schedule.stages[nextStage] || schedule.stages[0];
+      const stageProgress = clampNumber(((t * schedule.totalMinutes) - stage.startMinute) / stage.minutes, 0, 0, 1);
+      const nextStageId = schedule.stages[nextStage + 1]?.id || stage.id;
+      const fromPath = pathByStage[stage.id] ?? 0;
+      const toPath = pathByStage[nextStageId] ?? fromPath;
+      const pathT = THREE.MathUtils.lerp(fromPath, toPath, stage.id === 'starter' ? 0 : stageProgress * 0.45);
+      const doughPos = curve.getPointAt(clampNumber(pathT, 0, 0, 0.99));
+      dough.position.copy(doughPos);
+      dough.position.y += Math.sin(elapsed * 4) * 0.015;
+      loaf.material.color.set(stage.id === 'bake' || stage.id === 'cool' || stage.id === 'clean' ? '#b96f35' : '#d0a85c');
+      loaf.scale.set(1.18 + stageProgress * 0.18, stage.id === 'proof' ? 0.88 : 0.7, 0.92);
+
+      const starterProgress = stage.id === 'starter'
+        ? stageProgress
+        : (['mix', 'bulk', 'proof', 'bake', 'cool', 'clean'].includes(stage.id) ? 1 : 0.12 + stageProgress * 0.18);
+      const fillHeight = 0.2 + starterProgress * 0.48;
+      starterFill.scale.y = fillHeight / 0.24;
+      starterFill.position.y = 0.26 + fillHeight / 2;
+
+      ingredientSources.forEach(({ start, starterEnd, mixerEnd, badge }, index) => {
+        const isFeed = stage.id === 'feed';
+        const isMix = stage.id === 'mix';
+        const target = isFeed ? starterEnd : mixerEnd;
+        const feedT = (stageProgress * 1.5 + index * 0.16) % 1;
+        const moving = isFeed || isMix;
+        badge.position.lerpVectors(start, target, moving ? Math.min(1, feedT / 0.78) : 0);
+        badge.position.y += moving ? Math.sin(feedT * Math.PI) * 0.18 : Math.sin(elapsed * 1.5 + index) * 0.015;
+        badge.material.opacity = moving && feedT < 0.82 ? 1 : 0.34;
+      });
+
+      const focus = homeStageFocus[stage.id] || homeStageFocus.feed;
+      Object.entries(focusMeshes).forEach(([stationId, focusMesh]) => {
+        const active = stationId === focus.station;
+        focusMesh.visible = active;
+        focusMesh.scale.setScalar(active ? 1 + Math.sin(elapsed * 5) * 0.035 : 1);
+      });
+      Object.entries(stationMeshes).forEach(([stationId, mesh]) => {
+        const active = stationId === focus.station;
+        mesh.material.emissive.set(active ? '#332600' : '#000000');
+        mesh.material.emissiveIntensity = active ? 0.28 : 0;
+      });
+      Object.entries(callouts).forEach(([stageId, callout]) => {
+        const { sprite, baseY } = callout;
+        sprite.visible = stageId === stage.id;
+        if (sprite.visible) {
+          sprite.position.y = baseY + Math.sin(elapsed * 3) * 0.02;
+        }
+      });
+
+      const pose = poseByStage[stage.id] || poseByStage.feed;
+      arm.rotation.y = pose.y + Math.sin(elapsed * 2.2) * 0.04;
+      arm.rotation.z = pose.z;
+      lower.rotation.z = pose.lower;
+      upper.rotation.z = pose.upper;
+      gripper.rotation.z = pose.grip;
+      proofGlow.material.opacity = stage.id === 'proof' ? 0.82 + Math.sin(elapsed * 3) * 0.08 : 0.24;
+      cleanWave.material.opacity = stage.id === 'clean' ? 0.9 : 0.28;
+      cleanWave.position.y = 0.51 + Math.sin(elapsed * 5) * 0.02;
+      oven.material.emissive.set(stage.id === 'bake' ? '#6a2b15' : '#000000');
+      oven.material.emissiveIntensity = stage.id === 'bake' ? 0.28 + Math.sin(elapsed * 3) * 0.08 : 0;
+      mixerBowl.rotation.y += stage.id === 'mix' ? 0.035 : 0.006;
+      scene.rotation.y = Math.sin(elapsed * 0.16) * 0.09;
+      arrowMarkers.forEach(({ cone, pathT: arrowT }) => {
+        const here = curve.getPointAt(arrowT);
+        const next = curve.getPointAt(Math.min(0.99, arrowT + 0.015));
+        cone.position.copy(here);
+        cone.position.y += Math.sin(elapsed * 3 + arrowT * 10) * 0.018;
+        cone.lookAt(next);
+        cone.rotateX(Math.PI / 2);
+      });
+
+      if (stageRef.current !== nextStage) {
+        stageRef.current = nextStage;
+        setStageIndex(nextStage);
+      }
+    };
+
+    const animate = () => {
+      const elapsed = (performance.now() - startedAt) / 1000;
+      const delta = Math.max(0, elapsed - lastElapsed);
+      lastElapsed = elapsed;
+      let t = phaseRef.current / 100;
+      if (playingRef.current) {
+        const nextPhase = (phaseRef.current + delta * 6) % 100;
+        phaseRef.current = nextPhase;
+        t = nextPhase / 100;
+        if (elapsed - lastPhaseUiUpdate > 0.1) {
+          setPhase(Math.round(nextPhase));
+          lastPhaseUiUpdate = elapsed;
+        }
+      }
+      applyPhase(t, elapsed);
+      renderer.render(scene, camera);
+      raf = requestAnimationFrame(animate);
+    };
+    animate();
+
+    const resize = () => {
+      renderer.setSize(el.clientWidth, el.clientHeight);
+      camera.aspect = el.clientWidth / el.clientHeight;
+      camera.updateProjectionMatrix();
+      camera.lookAt(cameraTarget);
+    };
+    window.addEventListener('resize', resize);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('resize', resize);
+      renderer.dispose();
+      if (renderer.domElement.parentNode === el) {
+        el.removeChild(renderer.domElement);
+      }
+    };
+  }, [model.loavesPerBake, model.ovenCycles, schedule]);
+
+  const updatePhase = (value) => {
+    const nextPhase = clampNumber(value, 0, 0, 100);
+    phaseRef.current = nextPhase;
+    setPhase(nextPhase);
+    setPlaying(false);
+  };
+
+  return (
+    <div>
+      <div className={`scene homeScene ${sceneError ? 'sceneFallback' : ''}`} ref={mount}>
+        {sceneError && (
+          <div>
+            <strong>3D renderer unavailable</strong>
+            <span>The home micro-cell model still runs below; open this page in a browser with WebGL enabled to view the animated countertop unit.</span>
+          </div>
+        )}
+      </div>
+      <div className="sceneControls">
+        <button onClick={() => setPlaying((current) => !current)}>{playing ? <Pause size={16} /> : <Play size={16} />}</button>
+        <div>
+          <strong>{currentStage.name} · {telemetry.stageWindow}</strong>
+          <span>{currentStage.detail}</span>
+        </div>
+        <label className="phaseScrubber">
+          <span>{telemetry.clock} · {Math.round(phase)}%</span>
+          <input type="range" min="0" max="100" step="1" value={phase} onChange={(event) => updatePhase(event.target.value)} />
+        </label>
+      </div>
+      <div className="sceneTelemetry">
+        <Metric label="Starter rise" value={telemetry.starterRise} />
+        <Metric label="Bake cycle" value={telemetry.bakeCycle} />
+        <Metric label="Loaves baked" value={`${telemetry.completedLoaves}/${model.loavesPerBake}`} />
+        <Metric label="Water / week" value={`${format1(model.waterL)} L`} />
+        <Metric label="Energy / week" value={`${format1(model.electricityKwh)} kWh`} />
+        <Metric label="Clean status" value={telemetry.cleanStatus} />
+      </div>
+      <div className="stageTimeline">
+        {schedule.stages.map((stage, index) => (
+          <div className={index === stageIndex ? 'current' : ''} key={stage.name} style={{ flexGrow: stage.minutes }}>
+            <b>{stage.name}</b>
+            <span>{stage.startLabel}-{stage.endLabel}</span>
+            <span>{stage.duration}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

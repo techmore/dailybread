@@ -520,6 +520,30 @@ td:last-child {
   min-height: 620px;
 }
 
+.homeShowcase .scene {
+  min-height: 600px;
+}
+
+.homeControls {
+  background: rgba(255, 250, 240, .82);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  min-width: 260px;
+  padding: 14px;
+}
+
+.homeControls b {
+  color: var(--crust-dark);
+  display: block;
+  font-size: 1.35rem;
+}
+
+.homeControls label {
+  margin-top: 0;
+}
+
 .sceneFallback {
   align-items: center;
   display: flex;
