@@ -47,6 +47,15 @@ const homeCellDefaults = {
   parchmentBagCost: 0.1
 };
 
+const homeDimensionRows = [
+  ['Countertop micro-cell footprint', '~60 in W x 30 in D x 34 in H', 'Concept envelope for the starter tower, hoppers, mixer, proof drawer, oven, cooling shelf, robot reach, and rinse tray.'],
+  ['Breville BOV860 oven body', '18.9 in W x 15.9 in D x 10.9 in H', 'Manufacturer-published Smart Oven Air Fryer dimensions.'],
+  ['Damson Blue retailer listing', '18.75 in W x 13.25 in D x 11 in H', 'Retail listing for BOV860DBL1BUS1; use as a purchase-specific check.'],
+  ['Starter and hopper tower', '~16 in W x 14 in D x 28 in H', 'Estimated vertical module for flour, water, salt, starter jar, load cell, and lid handling.'],
+  ['Mixer, proof, and arm zone', '~24 in W x 24 in D x 28 in H', 'Estimated clear working volume for bowl access, timed folds, proof drawer, and arm swing.'],
+  ['Cooling and rinse zone', '~18 in W x 24 in D x 16 in H', 'Estimated side module for loaf cooling, removable crumb tray, rinse pan, and tool dock.']
+];
+
 const defaultAssumptions = {
   electricityRate: 0.17,
   laborRate: 22,
@@ -960,6 +969,20 @@ function HomeDailyBread({ assumptions }) {
           <p className="note">The timing assumes an evening starter feed and a next-day loaf. The robotic arm is not doing work for the full schedule; most of the value is consistent dosing, reminders, folds, transfer, oven staging, and cleanup prompts.</p>
         </Panel>
       </div>
+      <Panel title="Estimated Physical Dimensions">
+        <table>
+          <tbody>
+            {homeDimensionRows.map(([item, dimension, note]) => (
+              <tr key={item}>
+                <th>{item}</th>
+                <td>{dimension}</td>
+                <td>{note}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p className="note">These are planning dimensions, not fabrication drawings. The oven footprint, side/rear clearance, heat shielding, door swing, food-safe guards, and robot reach envelope still need mechanical design validation before prototyping.</p>
+      </Panel>
       <Panel title="Home Cell References and Purchase List">
         <div className="referenceGrid">
           <section className="referenceGroup">
@@ -1039,6 +1062,11 @@ function HomeBreadScene({ model, schedule }) {
     let renderer;
     try {
       renderer = new THREE.WebGLRenderer({ canvas: rendererCanvas, context: webglContext, antialias: true });
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.05;
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
       setSceneError(false);
     } catch {
       setSceneError(true);
@@ -1051,12 +1079,16 @@ function HomeBreadScene({ model, schedule }) {
     scene.add(new THREE.HemisphereLight(0xffffff, 0x7d6a50, 2.5));
     const keyLight = new THREE.DirectionalLight(0xffffff, 1.45);
     keyLight.position.set(3, 5, 4);
+    keyLight.castShadow = true;
+    keyLight.shadow.mapSize.set(1024, 1024);
     scene.add(keyLight);
 
     const addBox = (x, y, z, w, h, d, color, opacity = 1) => {
       const material = new THREE.MeshStandardMaterial({ color, roughness: 0.66, transparent: opacity < 1, opacity });
       const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
       mesh.position.set(x, y, z);
+      mesh.castShadow = opacity >= 0.6;
+      mesh.receiveShadow = true;
       scene.add(mesh);
       return mesh;
     };
@@ -1065,8 +1097,67 @@ function HomeBreadScene({ model, schedule }) {
       const material = new THREE.MeshStandardMaterial({ color, roughness: 0.58, transparent: opacity < 1, opacity });
       const mesh = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, height, 32), material);
       mesh.position.set(x, y, z);
+      mesh.castShadow = opacity >= 0.6;
+      mesh.receiveShadow = true;
       scene.add(mesh);
       return mesh;
+    };
+
+    const addRoundedBox = (x, y, z, w, h, d, color, radius = 0.06, options = {}) => {
+      const shape = new THREE.Shape();
+      const r = Math.min(radius, w / 2, h / 2);
+      shape.moveTo(-w / 2 + r, -h / 2);
+      shape.lineTo(w / 2 - r, -h / 2);
+      shape.quadraticCurveTo(w / 2, -h / 2, w / 2, -h / 2 + r);
+      shape.lineTo(w / 2, h / 2 - r);
+      shape.quadraticCurveTo(w / 2, h / 2, w / 2 - r, h / 2);
+      shape.lineTo(-w / 2 + r, h / 2);
+      shape.quadraticCurveTo(-w / 2, h / 2, -w / 2, h / 2 - r);
+      shape.lineTo(-w / 2, -h / 2 + r);
+      shape.quadraticCurveTo(-w / 2, -h / 2, -w / 2 + r, -h / 2);
+      const geometry = new THREE.ExtrudeGeometry(shape, {
+        depth: d,
+        bevelEnabled: true,
+        bevelThickness: options.bevelThickness ?? 0.025,
+        bevelSize: options.bevelSize ?? 0.025,
+        bevelSegments: options.bevelSegments ?? 4
+      });
+      geometry.translate(0, 0, -d / 2);
+      const material = new THREE.MeshStandardMaterial({
+        color,
+        roughness: options.roughness ?? 0.52,
+        metalness: options.metalness ?? 0.08,
+        transparent: (options.opacity ?? 1) < 1,
+        opacity: options.opacity ?? 1,
+        emissive: options.emissive ?? '#000000',
+        emissiveIntensity: options.emissiveIntensity ?? 0
+      });
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.position.set(x, y, z);
+      mesh.castShadow = (options.opacity ?? 1) >= 0.45;
+      mesh.receiveShadow = true;
+      scene.add(mesh);
+      return mesh;
+    };
+
+    const addTextPanel = (text, x, y, z, w, h, fill = '#101817', ink = '#dfead1') => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 512;
+      canvas.height = 192;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = fill;
+      ctx.roundRect(18, 18, 476, 120, 22);
+      ctx.fill();
+      ctx.fillStyle = ink;
+      ctx.font = '800 42px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(text, 256, 88);
+      const texture = new THREE.CanvasTexture(canvas);
+      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true }));
+      sprite.position.set(x, y, z);
+      sprite.scale.set(w, h, 1);
+      scene.add(sprite);
+      return sprite;
     };
 
     const addLabel = (text, x, y, z, accent = '#203734', scale = [1.15, 0.32, 1]) => {
@@ -1129,6 +1220,91 @@ function HomeBreadScene({ model, schedule }) {
       return sprite;
     };
 
+    const createBrevilleOven = (x, y, z) => {
+      const frontZ = z + 0.45;
+      const body = addRoundedBox(x, y, z, 1.52, 0.9, 0.88, '#4f6474', 0.12, {
+        metalness: 0.18,
+        roughness: 0.38,
+        bevelThickness: 0.035,
+        bevelSize: 0.035
+      });
+      addRoundedBox(x, y + 0.02, frontZ + 0.035, 1.34, 0.72, 0.055, '#d8d1c2', 0.08, {
+        metalness: 0.5,
+        roughness: 0.28
+      });
+      const glass = addRoundedBox(x - 0.16, y - 0.01, frontZ + 0.075, 0.9, 0.55, 0.045, '#101817', 0.05, {
+        opacity: 0.74,
+        metalness: 0.05,
+        roughness: 0.2
+      });
+      const glow = addRoundedBox(x - 0.16, y - 0.01, frontZ + 0.098, 0.78, 0.43, 0.03, '#f0a33c', 0.04, {
+        opacity: 0.18,
+        emissive: '#f97316',
+        emissiveIntensity: 0.25,
+        roughness: 0.8
+      });
+      addRoundedBox(x + 0.55, y, frontZ + 0.09, 0.24, 0.58, 0.05, '#273532', 0.035, {
+        metalness: 0.12,
+        roughness: 0.4
+      });
+      addRoundedBox(x + 0.55, y + 0.19, frontZ + 0.125, 0.16, 0.075, 0.025, '#b8dfd8', 0.015, {
+        emissive: '#5ad7cf',
+        emissiveIntensity: 0.25,
+        roughness: 0.25
+      });
+      addTextPanel('450F', x + 0.55, y + 0.19, frontZ + 0.17, 0.23, 0.09, '#102523', '#dff6ef');
+
+      const knobs = [y + 0.02, y - 0.17].map((knobY) => {
+        const knob = addCylinder(x + 0.55, knobY, frontZ + 0.15, 0.055, 0.04, '#d4cab8');
+        knob.rotation.x = Math.PI / 2;
+        knob.material.metalness = 0.45;
+        knob.material.roughness = 0.24;
+        return knob;
+      });
+      const button = addCylinder(x + 0.55, y - 0.31, frontZ + 0.15, 0.035, 0.035, '#d9a73a');
+      button.rotation.x = Math.PI / 2;
+
+      const handle = addCylinder(x - 0.16, y + 0.36, frontZ + 0.16, 0.035, 0.86, '#d7cbb7');
+      handle.rotation.z = Math.PI / 2;
+      handle.material.metalness = 0.48;
+      handle.material.roughness = 0.22;
+      addBox(x - 0.55, y + 0.31, frontZ + 0.13, 0.06, 0.16, 0.04, '#d7cbb7');
+      addBox(x + 0.23, y + 0.31, frontZ + 0.13, 0.06, 0.16, 0.04, '#d7cbb7');
+
+      const rods = [y + 0.15, y - 0.15].map((rodY) => {
+        const rod = addCylinder(x - 0.16, rodY, frontZ + 0.13, 0.014, 0.68, '#f3b665');
+        rod.rotation.z = Math.PI / 2;
+        rod.material.emissive.set('#f97316');
+        rod.material.emissiveIntensity = 0.2;
+        return rod;
+      });
+      for (let i = 0; i < 5; i += 1) {
+        addBox(x - 0.16, y - 0.02, frontZ + 0.135 + i * 0.022, 0.72, 0.012, 0.008, '#c8c2b5');
+      }
+      const fan = new THREE.Mesh(
+        new THREE.TorusGeometry(0.11, 0.008, 8, 32),
+        new THREE.MeshStandardMaterial({ color: '#9eaaab', metalness: 0.55, roughness: 0.28 })
+      );
+      fan.position.set(x - 0.16, y - 0.02, frontZ + 0.145);
+      scene.add(fan);
+      for (let i = 0; i < 3; i += 1) {
+        const blade = addBox(x - 0.16, y - 0.02, frontZ + 0.15, 0.18, 0.018, 0.006, '#9eaaab');
+        blade.rotation.z = (Math.PI / 3) * i;
+      }
+      for (let i = 0; i < 7; i += 1) {
+        addBox(x - 0.42 + i * 0.14, y + 0.49, z - 0.04, 0.075, 0.012, 0.36, '#3c4f5c', 0.9);
+      }
+      [
+        [x - 0.54, y - 0.5, z - 0.28],
+        [x + 0.54, y - 0.5, z - 0.28],
+        [x - 0.54, y - 0.5, z + 0.28],
+        [x + 0.54, y - 0.5, z + 0.28]
+      ].forEach(([fx, fy, fz]) => addCylinder(fx, fy, fz, 0.055, 0.07, '#2b302f'));
+      addTextPanel('BOV860', x - 0.43, y + 0.43, frontZ + 0.17, 0.32, 0.11, '#d8d1c2', '#263330');
+
+      return { body, glass, glow, fan, knobs, rods };
+    };
+
     addBox(0, -0.07, 0, 5.55, 0.14, 2.65, '#d8c89f');
     addBox(0, 1.08, -1.34, 5.55, 2.24, 0.05, '#d8c89f', 0.28);
     addBox(-2.82, 1.08, 0, 0.05, 2.24, 2.65, '#d8c89f', 0.2);
@@ -1165,11 +1341,10 @@ function HomeBreadScene({ model, schedule }) {
       })
     );
 
-    const oven = stationMeshes.oven;
-    addBox(1.4, 0.61, -0.78, 1.05, 0.62, 0.04, '#1a2421', 0.72);
-    addBox(1.4, 0.96, -0.82, 0.64, 0.05, 0.05, '#d9a73a');
-    addBox(1.9, 0.86, -0.84, 0.18, 0.12, 0.05, '#dfead1');
-    addLabel('18.9 x 15.9 x 10.9 in', 1.35, 0.16, -1.16, '#9c442e', [1.35, 0.34, 1]);
+    stationMeshes.oven.visible = false;
+    const brevilleOven = createBrevilleOven(1.4, 0.62, -0.33);
+    const oven = brevilleOven.body;
+    addLabel('OVEN 18.9"W x 15.9"D x 10.9"H', 1.38, 1.14, 0.82, '#9c442e', [1.45, 0.32, 1]);
 
     const starterGlass = addCylinder(-2.25, 0.66, 0.68, 0.24, 0.78, '#ffffff', 0.34);
     const starterFill = addCylinder(-2.25, 0.36, 0.68, 0.2, 0.24, '#d0a85c', 0.88);
@@ -1334,6 +1509,12 @@ function HomeBreadScene({ model, schedule }) {
       cleanWave.position.y = 0.51 + Math.sin(elapsed * 5) * 0.02;
       oven.material.emissive.set(stage.id === 'bake' ? '#6a2b15' : '#000000');
       oven.material.emissiveIntensity = stage.id === 'bake' ? 0.28 + Math.sin(elapsed * 3) * 0.08 : 0;
+      brevilleOven.glow.material.opacity = stage.id === 'bake' ? 0.52 + Math.sin(elapsed * 5) * 0.08 : 0.16;
+      brevilleOven.glow.material.emissiveIntensity = stage.id === 'bake' ? 0.85 : 0.24;
+      brevilleOven.rods.forEach((rod, index) => {
+        rod.material.emissiveIntensity = stage.id === 'bake' ? 0.9 + Math.sin(elapsed * 8 + index) * 0.12 : 0.18;
+      });
+      brevilleOven.fan.rotation.z += stage.id === 'bake' ? 0.11 : 0.012;
       mixerBowl.rotation.y += stage.id === 'mix' ? 0.035 : 0.006;
       scene.rotation.y = Math.sin(elapsed * 0.16) * 0.09;
       arrowMarkers.forEach(({ cone, pathT: arrowT }) => {
