@@ -396,6 +396,34 @@ td:last-child {
   grid-template-columns: repeat(4, 1fr);
 }
 
+.referenceGrid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.referenceGroup {
+  background: var(--surface-muted);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 16px;
+}
+
+.referenceGroup h3 {
+  font-size: 1rem;
+  margin-bottom: 10px;
+}
+
+.referenceGroup ul {
+  color: var(--ink-muted);
+  margin: 0;
+  padding-left: 20px;
+}
+
+.referenceGroup li {
+  margin: 8px 0;
+}
+
 .numberInput {
   margin: 0;
 }
@@ -642,7 +670,8 @@ footer {
   .finance,
   .pitchStrip,
   .stageTimeline,
-  .assumptionGrid {
+  .assumptionGrid,
+  .referenceGrid {
     grid-template-columns: 1fr 1fr;
   }
 
@@ -660,6 +689,7 @@ footer {
   .finance,
   .pitchStrip,
   .assumptionGrid,
+  .referenceGrid,
   .stageTimeline,
   .timingGrid,
   .metrics {

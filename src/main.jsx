@@ -312,13 +312,76 @@ function Model(props) {
             <Metric label="Gross margin" value={formatMoney(model.gross)} />
             <Metric label="Cost per loaf" value={formatSmallMoney(model.unitCost)} />
           </div>
-          <p className="note">Ingredient pricing uses King Arthur 12 lb bread flour at $11.34 and Morton 53 oz kosher salt at $3.39. Utility, labor, packaging, oven, and robotics assumptions are editable below.</p>
+          <p className="note">The readout above is driven by the itemized reference inputs below. Adjust the editable assumptions to test local pricing, labor, utility rates, or alternate equipment quotes.</p>
+        </Panel>
+        <Panel title="Reference Inputs">
+          <ReferenceInputs assumptions={assumptions} />
         </Panel>
         <Panel title="Editable Assumptions">
           <AssumptionEditor assumptions={assumptions} setAssumptions={setAssumptions} />
         </Panel>
       </div>
     </section>
+  );
+}
+
+function ReferenceInputs({ assumptions }) {
+  const groups = [
+    {
+      title: 'Ingredient References',
+      items: [
+        'King Arthur Baking Company Unbleached Bread Flour, 12 lb bag: $11.34, about $0.06/oz.',
+        'Morton Coarse Kosher Salt, 53 oz: $3.39.',
+        'Sliced school loaf recipe basis: 750g dough, 420g flour, 300g water, 80g starter, 10g salt.',
+        'Artisan loaf recipe basis: 650g dough, 360g flour, 270g water, 70g starter, 8g salt.'
+      ]
+    },
+    {
+      title: 'Equipment References',
+      items: [
+        `Atlas Craft 3 steam deck oven: ${formatMoney(assumptions.deckOvenCost)} midpoint from the $5k-$7k quote.`,
+        `${assumptions.ovenCapacity} loaves per oven batch based on 3 decks and 18 total 650g loaf capacity.`,
+        `Elephant Robotics mechArm Pi compact 6-axis robot arm: ${formatMoney(assumptions.robotArmCost)} per unit, modeled as two arms per container unit.`,
+        `20 ft insulated container buildout allowance: ${formatMoney(assumptions.containerBuildoutCost)} per container unit.`,
+        `Mixer, racks, slicer, bagger, sink package allowance: ${formatMoney(assumptions.mixerPackageCost)} per container unit.`,
+        `Controls, sensors, drains, and electrical install allowance: ${formatMoney(assumptions.controlsInstallCost)} per container unit.`
+      ]
+    },
+    {
+      title: 'Operating Assumptions',
+      items: [
+        `Electricity modeled at ${formatSmallMoney(assumptions.electricityRate)}/kWh.`,
+        `Oven consumption modeled at ${format1(assumptions.ovenKwhPerBatch)} kWh per batch plus ${format1(assumptions.utilityKwhPerScale)} kWh per scale unit.`,
+        `Labor oversight modeled at ${formatMoney(assumptions.laborRate)}/hr.`,
+        `Robot cleaning mode modeled every ${assumptions.robotCleanHours} hours, using ${assumptions.cleaningCycleL} L per clean cycle.`,
+        `Daily overhead allowance modeled at ${formatMoney(assumptions.dailyOverheadPerScale)} per scale unit.`
+      ]
+    },
+    {
+      title: 'Sales and Packaging',
+      items: [
+        `School sliced price: ${formatSmallMoney(assumptions.schoolSlicedPrice)} per loaf, Monday-Friday mode.`,
+        `School whole loaf price: ${formatSmallMoney(assumptions.schoolLoafPrice)} per loaf.`,
+        `Retail sliced price: ${formatSmallMoney(assumptions.retailSlicedPrice)} per loaf.`,
+        `Retail whole loaf price: ${formatSmallMoney(assumptions.retailLoafPrice)} per loaf.`,
+        `Packaging modeled at ${formatSmallMoney(assumptions.slicedBagCost)} per sliced bag and ${formatSmallMoney(assumptions.artisanBagCost)} per artisan bag.`
+      ]
+    }
+  ];
+
+  return (
+    <div className="referenceGrid">
+      {groups.map((group) => (
+        <section className="referenceGroup" key={group.title}>
+          <h3>{group.title}</h3>
+          <ul>
+            {group.items.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </section>
+      ))}
+    </div>
   );
 }
 
