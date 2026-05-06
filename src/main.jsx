@@ -51,14 +51,16 @@ const defaultAssumptions = {
   controlsInstallCost: 14000
 };
 
-const workflowStages = [
-  { name: 'Mix', duration: '20 min', detail: 'Flour, starter, water, and salt meter into the mixer.' },
-  { name: 'Bulk Proof', duration: '3 hr', detail: 'Dough tubs move to controlled proofing racks.' },
-  { name: 'Shape + Load', duration: '25 min', detail: 'Robot arm stages trays and loads the steam oven.' },
-  { name: 'Bake', duration: '52 min/load', detail: 'Atlas decks bake 18 loaves per batch, including steam and unload time.' },
-  { name: 'Cool', duration: '90 min', detail: 'Finished loaves move through cooling rack lanes.' },
-  { name: 'Slice + Bag', duration: '40 min', detail: 'School loaves are sliced, bagged, and staged for delivery.' },
-  { name: 'Clean', duration: '15 min', detail: 'Food-safe tools run a timed washdown cycle.' }
+const dayStartMinutes = 6 * 60;
+
+const workflowTemplates = [
+  { id: 'mix', name: 'Mix', minutes: 20, detail: 'Flour, starter, water, and salt meter into the mixer.' },
+  { id: 'proof', name: 'Bulk Proof', minutes: 180, detail: 'Dough tubs move to controlled proofing racks.' },
+  { id: 'shape', name: 'Shape + Load', minutes: 25, detail: 'Robot arm stages trays and builds oven-ready loads.' },
+  { id: 'bake', name: 'Bake', getMinutes: (model) => Math.max(52, Math.round(model.bakeHours * 60)), detail: (model) => `Atlas decks run ${model.batches} oven load${model.batches === 1 ? '' : 's'} at about ${Math.min(model.ovenCapacity, model.targetLoaves)} loaves per load.` },
+  { id: 'cool', name: 'Cool', minutes: 90, detail: 'Finished loaves accumulate through cooling rack lanes.' },
+  { id: 'slice', name: 'Slice + Bag', minutes: 40, detail: 'School loaves are sliced, bagged, and staged for delivery.' },
+  { id: 'clean', name: 'Clean', minutes: 15, detail: 'Food-safe tools run a timed washdown cycle.' }
 ];
 
 const ingredientFeed = [
@@ -120,6 +122,78 @@ const formatMoney = (n) => n.toLocaleString(undefined, { style: 'currency', curr
 const formatSmallMoney = (n) => n.toLocaleString(undefined, { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const format1 = (n) => n.toLocaleString(undefined, { maximumFractionDigits: 1 });
 const formatUnitMoney = (n) => (n > 0 && n < 1 ? formatSmallMoney(n) : formatMoney(n));
+
+function formatDuration(minutes) {
+  const rounded = Math.max(1, Math.round(minutes));
+  const hours = Math.floor(rounded / 60);
+  const remainder = rounded % 60;
+  if (!hours) {
+    return `${rounded} min`;
+  }
+  return remainder ? `${hours}h ${remainder}m` : `${hours} hr`;
+}
+
+function formatClock(offsetMinutes) {
+  const minutesFromMidnight = (dayStartMinutes + Math.round(offsetMinutes)) % (24 * 60);
+  const hour24 = Math.floor(minutesFromMidnight / 60);
+  const minute = minutesFromMidnight % 60;
+  const suffix = hour24 >= 12 ? 'PM' : 'AM';
+  const hour12 = hour24 % 12 || 12;
+  return `${hour12}:${String(minute).padStart(2, '0')} ${suffix}`;
+}
+
+function getWorkflowSchedule(model) {
+  const rawStages = workflowTemplates.map((template) => {
+    const minutes = template.getMinutes ? template.getMinutes(model) : template.minutes;
+    return {
+      ...template,
+      minutes,
+      duration: formatDuration(minutes),
+      detail: typeof template.detail === 'function' ? template.detail(model) : template.detail
+    };
+  });
+  const totalMinutes = rawStages.reduce((sum, stage) => sum + stage.minutes, 0);
+  let cursor = 0;
+  const stages = rawStages.map((stage) => {
+    const startMinute = cursor;
+    cursor += stage.minutes;
+    return {
+      ...stage,
+      startMinute,
+      endMinute: cursor,
+      startLabel: formatClock(startMinute),
+      endLabel: formatClock(cursor),
+      share: stage.minutes / totalMinutes
+    };
+  });
+
+  return { stages, totalMinutes };
+}
+
+function getStageIndexForPhase(schedule, phase) {
+  const currentMinute = (clampNumber(phase, 0, 0, 100) / 100) * schedule.totalMinutes;
+  const index = schedule.stages.findIndex((stage) => currentMinute >= stage.startMinute && currentMinute < stage.endMinute);
+  return index === -1 ? schedule.stages.length - 1 : index;
+}
+
+function getWorkflowTelemetry(model, schedule, phase, stageIndex) {
+  const currentMinute = (clampNumber(phase, 0, 0, 100) / 100) * schedule.totalMinutes;
+  const currentStage = schedule.stages[stageIndex] || schedule.stages[0];
+  const bakeStage = schedule.stages.find((stage) => stage.id === 'bake');
+  const bakeElapsed = bakeStage ? clampNumber(currentMinute - bakeStage.startMinute, 0, 0, bakeStage.minutes) : 0;
+  const activeBatch = bakeStage && currentMinute >= bakeStage.startMinute
+    ? Math.min(model.batches, Math.max(1, Math.ceil((bakeElapsed / bakeStage.minutes) * model.batches)))
+    : 0;
+  const completedLoaves = Math.min(model.targetLoaves, Math.round((currentMinute / schedule.totalMinutes) * model.targetLoaves));
+
+  return {
+    clock: formatClock(currentMinute),
+    stageWindow: `${currentStage.startLabel}-${currentStage.endLabel}`,
+    activeBatch,
+    completedLoaves,
+    cleanStatus: currentStage.id === 'clean' ? 'Washdown running' : 'Queued after packout'
+  };
+}
 
 function clampNumber(value, fallback, min = 0, max = Number.POSITIVE_INFINITY) {
   const number = Number(value);
@@ -241,6 +315,7 @@ function computeModel({ loaves, multiplier, school, sliced, assumptions }) {
   return {
     targetLoaves,
     recipe,
+    ovenCapacity: safeAssumptions.ovenCapacity,
     batches,
     bakeHours,
     flourKg,
@@ -586,7 +661,7 @@ function Automation({ model, multiplier, setMultiplier, assumptions }) {
             ))}
           </div>
         </div>
-        <ContainerScene multiplier={multiplier} />
+        <ContainerScene model={model} multiplier={multiplier} />
       </section>
       <div className="autoGrid">
         <Panel title="Recommended Configuration">
@@ -623,12 +698,15 @@ function Automation({ model, multiplier, setMultiplier, assumptions }) {
   );
 }
 
-function ContainerScene({ multiplier }) {
+function ContainerScene({ model, multiplier }) {
   const mount = useRef(null);
   const [playing, setPlaying] = useState(true);
   const [phase, setPhase] = useState(0);
   const [stageIndex, setStageIndex] = useState(0);
   const [sceneError, setSceneError] = useState(false);
+  const schedule = useMemo(() => getWorkflowSchedule(model), [model]);
+  const currentStage = schedule.stages[stageIndex] || schedule.stages[0];
+  const telemetry = getWorkflowTelemetry(model, schedule, phase, stageIndex);
   const playingRef = useRef(playing);
   const phaseRef = useRef(0);
   const stageRef = useRef(0);
@@ -769,10 +847,18 @@ function ContainerScene({ multiplier }) {
     };
 
     const floorW = multiplier > 5 ? 12.4 : 10.4;
+    const moduleCount = multiplier <= 2 ? 1 : multiplier <= 5 ? 2 : 3;
+    const laneCount = Math.min(4, Math.max(1, Math.ceil(multiplier / 2)));
+    const ovenQueueCount = Math.min(6, Math.max(1, model.batches));
     addBox(0, -0.08, 0, floorW, 0.12, 3.6, '#d8c89f');
     addBox(0, 1.05, -1.92, floorW, 2.35, 0.05, '#d8c89f', 0.28);
     addBox(-floorW / 2, 1.05, 0, 0.05, 2.35, 3.6, '#d8c89f', 0.22);
     addBox(floorW / 2, 1.05, 0, 0.05, 2.35, 3.6, '#d8c89f', 0.22);
+    for (let i = 1; i < moduleCount; i += 1) {
+      const x = -floorW / 2 + (floorW / moduleCount) * i;
+      addBox(x, 0.03, 0, 0.04, 0.18, 3.45, '#9c442e', 0.65);
+      addLabel(`MODULE ${i + 1}`, x + 0.42, 0.42, 1.62);
+    }
     addDimensionLine(
       new THREE.Vector3(-floorW / 2, 0.05, 2.08),
       new THREE.Vector3(floorW / 2, 0.05, 2.08),
@@ -810,8 +896,18 @@ function ContainerScene({ multiplier }) {
     mixerDrum.position.set(-3.45, 0.68, -0.7);
     scene.add(mixerDrum);
 
-    for (let i = 0; i < Math.min(7, multiplier + 2); i += 1) {
-      addBox(-3.6 + i * 1.15, 0.22, 1.48, 0.48, 0.28, 0.58, '#caa15a');
+    for (let lane = 0; lane < laneCount; lane += 1) {
+      const z = 1.48 - lane * 0.36;
+      for (let i = 0; i < Math.min(7, multiplier + 2); i += 1) {
+        addBox(-3.6 + i * 1.15, 0.22, z, 0.48, 0.28, 0.58, lane === 0 ? '#caa15a' : '#d6b56f');
+      }
+    }
+    if (multiplier > 2) {
+      addBox(-0.45, 0.08, -1.46, 2.35, 0.1, 0.16, '#9c442e', 0.8);
+      addLabel('SHARED OVEN SPINE', -0.45, 1.62, -1.5);
+    }
+    for (let i = 0; i < ovenQueueCount; i += 1) {
+      addBox(-1.2 + i * 0.28, 0.14, -1.28, 0.18, 0.12, 0.28, '#e2b84f');
     }
 
     addLabel('INGREDIENT FEED', -4.75, 1.2, 0.9);
@@ -831,19 +927,23 @@ function ContainerScene({ multiplier }) {
     );
     scene.add(tube);
 
-    const trayGroup = new THREE.Group();
-    const trayBase = new THREE.Mesh(
-      new THREE.BoxGeometry(0.58, 0.08, 0.34),
-      new THREE.MeshStandardMaterial({ color: '#9b6b38', roughness: 0.68 })
-    );
-    trayGroup.add(trayBase);
-    for (let i = 0; i < 3; i += 1) {
-      const loaf = new THREE.Mesh(new THREE.SphereGeometry(0.11, 20, 12), new THREE.MeshStandardMaterial({ color: '#c9823b', roughness: 0.9 }));
-      loaf.scale.set(1.35, 0.55, 0.8);
-      loaf.position.set(-0.2 + i * 0.2, 0.12, 0);
-      trayGroup.add(loaf);
-    }
-    scene.add(trayGroup);
+    const createTray = (index) => {
+      const trayGroup = new THREE.Group();
+      const trayBase = new THREE.Mesh(
+        new THREE.BoxGeometry(0.58, 0.08, 0.34),
+        new THREE.MeshStandardMaterial({ color: index === 0 ? '#9b6b38' : '#b98246', roughness: 0.68 })
+      );
+      trayGroup.add(trayBase);
+      for (let i = 0; i < 3; i += 1) {
+        const loaf = new THREE.Mesh(new THREE.SphereGeometry(0.11, 20, 12), new THREE.MeshStandardMaterial({ color: '#c9823b', roughness: 0.9 }));
+        loaf.scale.set(1.35, 0.55, 0.8);
+        loaf.position.set(-0.2 + i * 0.2, 0.12, 0);
+        trayGroup.add(loaf);
+      }
+      scene.add(trayGroup);
+      return trayGroup;
+    };
+    const trayGroups = Array.from({ length: Math.min(10, Math.max(3, model.batches + moduleCount)) }, (_, index) => createTray(index));
 
     const pulse = new THREE.Mesh(new THREE.SphereGeometry(0.08, 20, 20), new THREE.MeshStandardMaterial({ color: '#e2b84f', emissive: '#c88e17', emissiveIntensity: 0.7 }));
     scene.add(pulse);
@@ -863,16 +963,31 @@ function ContainerScene({ multiplier }) {
       upper.rotation.z = 0.7;
       group.add(upper);
       scene.add(group);
-      return group;
+      return { group, lower, upper };
     });
 
     let raf;
     let lastPhaseUiUpdate = 0;
     let lastElapsed = 0;
     const startedAt = performance.now();
+    const armPoses = {
+      mix: [{ y: -0.65, z: -0.08, lower: -0.72, upper: 0.98 }, { y: -0.2, z: 0.04, lower: -0.45, upper: 0.72 }],
+      proof: [{ y: -0.48, z: 0.02, lower: -0.5, upper: 0.84 }, { y: 0.2, z: 0.04, lower: -0.36, upper: 0.64 }],
+      shape: [{ y: -0.2, z: -0.04, lower: -0.42, upper: 0.7 }, { y: -0.75, z: -0.1, lower: -0.76, upper: 1.04 }],
+      bake: [{ y: -0.05, z: 0.02, lower: -0.34, upper: 0.62 }, { y: -0.95, z: -0.14, lower: -0.82, upper: 1.12 }],
+      cool: [{ y: 0.15, z: 0.04, lower: -0.34, upper: 0.62 }, { y: 0.72, z: 0.08, lower: -0.5, upper: 0.82 }],
+      slice: [{ y: 0.4, z: 0.04, lower: -0.36, upper: 0.66 }, { y: 0.92, z: 0.1, lower: -0.62, upper: 0.94 }],
+      clean: [{ y: 0, z: 0.18, lower: -0.2, upper: 0.35 }, { y: 0, z: -0.18, lower: -0.2, upper: 0.35 }]
+    };
     const applyPhase = (t, elapsed) => {
-      const pos = curve.getPointAt(t);
-      trayGroup.position.copy(pos);
+      trayGroups.forEach((trayGroup, index) => {
+        const trayT = clampNumber(t - index * 0.035, 0, 0, 0.99);
+        const pos = curve.getPointAt(trayT);
+        pos.z += (index % laneCount) * 0.18 - 0.08;
+        pos.y += Math.floor(index / Math.max(1, laneCount)) * 0.03;
+        trayGroup.position.copy(pos);
+        trayGroup.visible = index === 0 || t > index * 0.035;
+      });
       pulse.position.copy(curve.getPointAt((t + 0.08) % 1));
       pulse.scale.setScalar(1 + Math.sin(elapsed * 8) * 0.22);
       mixer.rotation.y = Math.sin(elapsed * 5) * 0.03;
@@ -885,11 +1000,15 @@ function ContainerScene({ multiplier }) {
         badge.position.y += Math.sin(feedT * Math.PI) * 0.28;
         badge.material.opacity = feedT < 0.82 ? 1 : 0.25;
       });
+      const nextStage = getStageIndexForPhase(schedule, t * 100);
+      const poseSet = armPoses[schedule.stages[nextStage]?.id] || armPoses.mix;
       armGroups.forEach((arm, index) => {
-        arm.rotation.y = Math.sin(t * Math.PI * 2 + index * 1.2) * 0.42;
-        arm.rotation.z = Math.sin(t * Math.PI * 1.6 + index) * 0.08;
+        const pose = poseSet[index] || poseSet[0];
+        arm.group.rotation.y = pose.y + Math.sin(elapsed * 2 + index) * 0.04;
+        arm.group.rotation.z = pose.z;
+        arm.lower.rotation.z = pose.lower;
+        arm.upper.rotation.z = pose.upper;
       });
-      const nextStage = Math.min(workflowStages.length - 1, Math.floor(t * workflowStages.length));
       if (stageRef.current !== nextStage) {
         stageRef.current = nextStage;
         setStageIndex(nextStage);
@@ -931,7 +1050,7 @@ function ContainerScene({ multiplier }) {
         el.removeChild(renderer.domElement);
       }
     };
-  }, [multiplier]);
+  }, [multiplier, model.batches, model.targetLoaves, model.ovenCapacity, schedule]);
 
   const updatePhase = (value) => {
     const nextPhase = clampNumber(value, 0, 0, 100);
@@ -953,18 +1072,26 @@ function ContainerScene({ multiplier }) {
       <div className="sceneControls">
         <button onClick={() => setPlaying((current) => !current)}>{playing ? <Pause size={16} /> : <Play size={16} />}</button>
         <div>
-          <strong>{workflowStages[stageIndex].name} · {workflowStages[stageIndex].duration}</strong>
-          <span>{workflowStages[stageIndex].detail}</span>
+          <strong>{currentStage.name} · {telemetry.stageWindow}</strong>
+          <span>{currentStage.detail}</span>
         </div>
         <label className="phaseScrubber">
-          <span>Day loop {Math.round(phase)}%</span>
+          <span>{telemetry.clock} · {Math.round(phase)}%</span>
           <input type="range" min="0" max="100" step="1" value={phase} onChange={(event) => updatePhase(event.target.value)} />
         </label>
       </div>
+      <div className="sceneTelemetry">
+        <Metric label="Active batch" value={`${telemetry.activeBatch}/${model.batches}`} />
+        <Metric label="Oven load" value={`${Math.min(model.ovenCapacity, model.targetLoaves)} loaves`} />
+        <Metric label="Loaves through line" value={`${telemetry.completedLoaves}/${model.targetLoaves}`} />
+        <Metric label="Water + clean" value={`${format1(model.waterL + model.cleaningWater)} L`} />
+        <Metric label="Clean status" value={telemetry.cleanStatus} />
+      </div>
       <div className="stageTimeline">
-        {workflowStages.map((stage, index) => (
-          <div className={index === stageIndex ? 'current' : ''} key={stage.name}>
+        {schedule.stages.map((stage, index) => (
+          <div className={index === stageIndex ? 'current' : ''} key={stage.name} style={{ flexGrow: stage.minutes }}>
             <b>{stage.name}</b>
+            <span>{stage.startLabel}-{stage.endLabel}</span>
             <span>{stage.duration}</span>
           </div>
         ))}

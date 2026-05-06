@@ -597,6 +597,23 @@ td:last-child {
   width: 100%;
 }
 
+.sceneTelemetry {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin-top: 12px;
+}
+
+.sceneTelemetry .metric {
+  background: rgba(255, 250, 240, .84);
+  border: 1px solid var(--line);
+  padding: 10px;
+}
+
+.sceneTelemetry .metric strong {
+  font-size: 1rem;
+}
+
 .stageTimeline,
 .timingGrid {
   display: grid;
@@ -604,7 +621,8 @@ td:last-child {
 }
 
 .stageTimeline {
-  grid-template-columns: repeat(7, minmax(0, 1fr));
+  display: flex;
+  overflow-x: auto;
   margin-top: 12px;
 }
 
@@ -612,7 +630,9 @@ td:last-child {
   background: rgba(255, 250, 240, .72);
   border: 1px solid var(--line);
   border-radius: 6px;
+  flex-basis: 0;
   min-height: 72px;
+  min-width: 118px;
   padding: 10px;
 }
 
@@ -712,7 +732,7 @@ footer {
   .kpiRow,
   .finance,
   .pitchStrip,
-  .stageTimeline,
+  .sceneTelemetry,
   .assumptionGrid,
   .referenceGrid {
     grid-template-columns: 1fr 1fr;
@@ -741,7 +761,7 @@ footer {
   .pitchStrip,
   .assumptionGrid,
   .referenceGrid,
-  .stageTimeline,
+  .sceneTelemetry,
   .timingGrid,
   .metrics {
     grid-template-columns: 1fr;
