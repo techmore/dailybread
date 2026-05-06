@@ -1220,6 +1220,162 @@ function HomeBreadScene({ model, schedule }) {
       return sprite;
     };
 
+    const addTube = (points, color, radius = 0.014, opacity = 1) => {
+      const curve = new THREE.CatmullRomCurve3(points.map((point) => new THREE.Vector3(...point)));
+      const mesh = new THREE.Mesh(
+        new THREE.TubeGeometry(curve, 36, radius, 10),
+        new THREE.MeshStandardMaterial({ color, roughness: 0.4, metalness: 0.12, transparent: opacity < 1, opacity })
+      );
+      mesh.castShadow = opacity >= 0.55;
+      scene.add(mesh);
+      return mesh;
+    };
+
+    const createStarterStation = (x, y, z) => {
+      addRoundedBox(x, 0.19, z, 0.78, 0.14, 0.68, '#d8d1c2', 0.055, {
+        metalness: 0.2,
+        roughness: 0.42
+      });
+      addRoundedBox(x, 0.29, z, 0.56, 0.08, 0.48, '#263330', 0.035, {
+        metalness: 0.22,
+        roughness: 0.28
+      });
+      addTextPanel('128g', x + 0.16, 0.33, z + 0.27, 0.22, 0.08, '#102523', '#dff6ef');
+
+      const glass = addCylinder(x, y, z, 0.26, 0.86, '#ffffff', 0.28);
+      glass.material.metalness = 0.02;
+      glass.material.roughness = 0.05;
+      const fill = addCylinder(x, 0.36, z, 0.21, 0.24, '#d0a85c', 0.9);
+      fill.material.roughness = 0.86;
+
+      const ringMaterial = new THREE.MeshStandardMaterial({ color: '#d8d1c2', roughness: 0.24, metalness: 0.35 });
+      [0.28, 1.06].forEach((ringY) => {
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(0.258, 0.012, 8, 42), ringMaterial);
+        ring.position.set(x, ringY, z);
+        ring.rotation.x = Math.PI / 2;
+        ring.castShadow = true;
+        scene.add(ring);
+      });
+      const lid = addCylinder(x, 1.12, z, 0.27, 0.07, '#596a70');
+      addCylinder(x, 1.18, z, 0.19, 0.035, '#d8d1c2');
+
+      for (let i = 0; i < 5; i += 1) {
+        const width = i % 2 === 0 ? 0.14 : 0.09;
+        addBox(x - 0.2 + width / 2, 0.43 + i * 0.105, z + 0.265, width, 0.012, 0.008, '#596a70', 0.78);
+      }
+      addTextPanel('STARTER', x, 0.7, z + 0.31, 0.5, 0.16, '#fffaf0', '#203734');
+
+      const bubbles = Array.from({ length: 14 }, (_, index) => {
+        const bubble = new THREE.Mesh(
+          new THREE.SphereGeometry(0.018 + (index % 3) * 0.006, 12, 8),
+          new THREE.MeshStandardMaterial({ color: '#f7f2e8', roughness: 0.2, transparent: true, opacity: 0.78 })
+        );
+        const angle = index * 1.85;
+        bubble.userData = {
+          angle,
+          radius: 0.07 + (index % 4) * 0.032,
+          baseY: 0.36 + (index % 7) * 0.052,
+          speed: 0.7 + (index % 5) * 0.15
+        };
+        bubble.position.set(x + Math.cos(angle) * bubble.userData.radius, bubble.userData.baseY, z + Math.sin(angle) * bubble.userData.radius);
+        scene.add(bubble);
+        return bubble;
+      });
+
+      return { glass, fill, lid, bubbles };
+    };
+
+    const createIngredientHoppers = (x, y, z) => {
+      const hoppers = [
+        { label: 'F', color: '#efe3bf', x: x - 0.32 },
+        { label: 'H2O', color: '#8fb3c7', x },
+        { label: 'NaCl', color: '#f7f7ef', x: x + 0.32 }
+      ];
+
+      hoppers.forEach((hopper) => {
+        addRoundedBox(hopper.x, y, z, 0.26, 0.48, 0.28, hopper.color, 0.04, {
+          opacity: 0.62,
+          roughness: 0.18,
+          metalness: 0.05
+        });
+        addRoundedBox(hopper.x, y + 0.28, z, 0.3, 0.055, 0.3, '#d8d1c2', 0.02, {
+          metalness: 0.35,
+          roughness: 0.24
+        });
+        const funnel = new THREE.Mesh(
+          new THREE.ConeGeometry(0.15, 0.22, 4),
+          new THREE.MeshStandardMaterial({ color: hopper.color, roughness: 0.58, transparent: true, opacity: 0.82 })
+        );
+        funnel.position.set(hopper.x, y - 0.35, z);
+        funnel.rotation.y = Math.PI / 4;
+        funnel.castShadow = true;
+        scene.add(funnel);
+        addTextPanel(hopper.label, hopper.x, y + 0.02, z + 0.18, 0.2, 0.08, 'rgba(255,250,240,0.9)', '#203734');
+      });
+
+      addTube([[x - 0.32, y - 0.46, z], [-2.25, 1.1, 0.68]], '#d8d1c2', 0.012, 0.82);
+      addTube([[x, y - 0.46, z], [-0.9, 0.95, -0.2]], '#8fb3c7', 0.012, 0.82);
+      addTube([[x + 0.32, y - 0.46, z], [-0.88, 0.96, -0.08]], '#f7f7ef', 0.012, 0.82);
+    };
+
+    const createMixerStation = (x, y, z) => {
+      addRoundedBox(x, 0.28, z, 0.88, 0.16, 0.72, '#4e6067', 0.06, {
+        metalness: 0.15,
+        roughness: 0.38
+      });
+      addRoundedBox(x - 0.35, 0.62, z + 0.06, 0.16, 0.62, 0.28, '#4e6067', 0.055, {
+        metalness: 0.16,
+        roughness: 0.38
+      });
+      const head = addRoundedBox(x, 0.98, z - 0.06, 0.86, 0.24, 0.46, '#5f7278', 0.09, {
+        metalness: 0.18,
+        roughness: 0.34
+      });
+      addRoundedBox(x + 0.32, 1.0, z + 0.2, 0.12, 0.06, 0.04, '#d9a73a', 0.015);
+      addTextPanel('MIX', x - 0.16, 1.01, z + 0.23, 0.27, 0.1, '#d8d1c2', '#203734');
+
+      const bowl = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.34, 0.25, 0.36, 42, 1, true),
+        new THREE.MeshStandardMaterial({ color: '#d7d2c7', roughness: 0.18, metalness: 0.62, side: THREE.DoubleSide })
+      );
+      bowl.position.set(x, 0.62, z);
+      bowl.castShadow = true;
+      bowl.receiveShadow = true;
+      scene.add(bowl);
+      const bowlLip = new THREE.Mesh(
+        new THREE.TorusGeometry(0.34, 0.014, 8, 48),
+        new THREE.MeshStandardMaterial({ color: '#f1eadc', roughness: 0.16, metalness: 0.55 })
+      );
+      bowlLip.position.set(x, 0.8, z);
+      bowlLip.rotation.x = Math.PI / 2;
+      bowlLip.castShadow = true;
+      scene.add(bowlLip);
+
+      const dough = new THREE.Mesh(
+        new THREE.SphereGeometry(0.22, 24, 14),
+        new THREE.MeshStandardMaterial({ color: '#d0a85c', roughness: 0.92 })
+      );
+      dough.scale.set(1.35, 0.34, 0.95);
+      dough.position.set(x, 0.72, z);
+      dough.castShadow = true;
+      scene.add(dough);
+
+      const hookGroup = new THREE.Group();
+      hookGroup.position.set(x, 0.92, z);
+      const hookMat = new THREE.MeshStandardMaterial({ color: '#d8d1c2', roughness: 0.22, metalness: 0.58 });
+      const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.36, 16), hookMat);
+      shaft.position.y = -0.1;
+      hookGroup.add(shaft);
+      const hook = new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.014, 8, 30, Math.PI * 1.35), hookMat);
+      hook.position.y = -0.31;
+      hook.rotation.x = Math.PI / 2;
+      hook.rotation.z = -0.55;
+      hookGroup.add(hook);
+      scene.add(hookGroup);
+
+      return { bowl, bowlLip, dough, hookGroup, head };
+    };
+
     const createBrevilleOven = (x, y, z) => {
       const frontZ = z + 0.45;
       const body = addRoundedBox(x, y, z, 1.52, 0.9, 0.88, '#4f6474', 0.12, {
@@ -1341,32 +1497,17 @@ function HomeBreadScene({ model, schedule }) {
       })
     );
 
-    stationMeshes.oven.visible = false;
+    ['starter', 'hoppers', 'mixer', 'oven'].forEach((stationId) => {
+      stationMeshes[stationId].visible = false;
+    });
+    const starterStation = createStarterStation(-2.25, 0.66, 0.68);
+    const starterFill = starterStation.fill;
+    createIngredientHoppers(-2.2, 1.2, -0.55);
+    const mixerStation = createMixerStation(-0.9, 0.64, -0.2);
+    const mixerBowl = mixerStation.bowl;
     const brevilleOven = createBrevilleOven(1.4, 0.62, -0.33);
     const oven = brevilleOven.body;
     addLabel('OVEN 18.9"W x 15.9"D x 10.9"H', 1.38, 1.14, 0.82, '#9c442e', [1.45, 0.32, 1]);
-
-    const starterGlass = addCylinder(-2.25, 0.66, 0.68, 0.24, 0.78, '#ffffff', 0.34);
-    const starterFill = addCylinder(-2.25, 0.36, 0.68, 0.2, 0.24, '#d0a85c', 0.88);
-    starterGlass.material.metalness = 0.05;
-    addCylinder(-2.25, 1.08, 0.68, 0.25, 0.06, '#596a70');
-    addLabel('LIVE STARTER', -2.25, 0.18, 1.08, '#d0a85c', [1.05, 0.3, 1]);
-
-    const hopperTops = [
-      [-2.48, 1.28, -0.55, '#efe3bf'],
-      [-2.19, 1.28, -0.55, '#8fb3c7'],
-      [-1.9, 1.28, -0.55, '#f7f7ef']
-    ];
-    hopperTops.forEach(([x, y, z, color]) => {
-      const cone = new THREE.Mesh(new THREE.ConeGeometry(0.15, 0.28, 4), new THREE.MeshStandardMaterial({ color, roughness: 0.72 }));
-      cone.position.set(x, y, z);
-      cone.rotation.y = Math.PI / 4;
-      scene.add(cone);
-    });
-
-    const mixerBowl = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.25, 0.34, 32), new THREE.MeshStandardMaterial({ color: '#f0e0b5', roughness: 0.78 }));
-    mixerBowl.position.set(-0.9, 0.64, -0.2);
-    scene.add(mixerBowl);
 
     const proofGlow = addBox(0.15, 0.65, 0.75, 0.82, 0.06, 0.5, '#dfead1', 0.52);
     const cleanWave = addBox(0.55, 0.51, -1.02, 0.72, 0.035, 0.32, '#8fb3c7', 0.75);
@@ -1467,6 +1608,19 @@ function HomeBreadScene({ model, schedule }) {
       const fillHeight = 0.2 + starterProgress * 0.48;
       starterFill.scale.y = fillHeight / 0.24;
       starterFill.position.y = 0.26 + fillHeight / 2;
+      starterStation.bubbles.forEach((bubble, index) => {
+        const { angle, radius, baseY, speed } = bubble.userData;
+        const swirl = angle + elapsed * (0.35 + index * 0.015);
+        const usableHeight = Math.max(0.14, fillHeight - 0.04);
+        const localY = ((baseY - 0.3 + elapsed * speed * 0.045) % usableHeight);
+        bubble.position.set(
+          -2.25 + Math.cos(swirl) * radius,
+          0.3 + localY,
+          0.68 + Math.sin(swirl) * radius
+        );
+        bubble.visible = starterProgress > 0.08;
+        bubble.material.opacity = Math.min(0.82, 0.18 + starterProgress * 0.7);
+      });
 
       ingredientSources.forEach(({ start, starterEnd, mixerEnd, badge }, index) => {
         const isFeed = stage.id === 'feed';
@@ -1516,6 +1670,15 @@ function HomeBreadScene({ model, schedule }) {
       });
       brevilleOven.fan.rotation.z += stage.id === 'bake' ? 0.11 : 0.012;
       mixerBowl.rotation.y += stage.id === 'mix' ? 0.035 : 0.006;
+      mixerStation.hookGroup.rotation.y += stage.id === 'mix' || stage.id === 'bulk' ? 0.16 : 0.018;
+      mixerStation.dough.rotation.y += stage.id === 'mix' || stage.id === 'bulk' ? 0.055 : 0.006;
+      mixerStation.dough.scale.set(
+        1.35 + (stage.id === 'mix' ? Math.sin(elapsed * 8) * 0.045 : 0),
+        stage.id === 'bulk' ? 0.4 + Math.sin(elapsed * 2.4) * 0.02 : 0.34,
+        0.95 + (stage.id === 'mix' ? Math.cos(elapsed * 7) * 0.035 : 0)
+      );
+      mixerStation.head.material.emissive.set(stage.id === 'mix' ? '#332600' : '#000000');
+      mixerStation.head.material.emissiveIntensity = stage.id === 'mix' ? 0.22 : 0;
       scene.rotation.y = Math.sin(elapsed * 0.16) * 0.09;
       arrowMarkers.forEach(({ cone, pathT: arrowT }) => {
         const here = curve.getPointAt(arrowT);
