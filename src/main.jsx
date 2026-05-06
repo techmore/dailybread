@@ -2189,34 +2189,168 @@ function HomeBreadScene({ model, schedule }) {
       badge: addIngredientBadge(item, -2.72 + index * 0.28, 1.33, -0.92)
     }));
 
-    const arm = new THREE.Group();
-    arm.position.set(-0.05, 0.16, 0.04);
-    const armMat = new THREE.MeshStandardMaterial({ color: '#d9a73a', metalness: 0.24, roughness: 0.42 });
-    const armBase = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.23, 0.16), armMat);
-    arm.add(armBase);
-    const lower = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.78, 0.12), armMat);
-    lower.position.set(0.2, 0.4, 0);
-    lower.rotation.z = -0.42;
-    arm.add(lower);
-    const upper = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.6, 0.1), armMat);
-    upper.position.set(0.5, 0.72, 0);
-    upper.rotation.z = 0.68;
-    arm.add(upper);
-    const gripper = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.05, 0.12), armMat);
-    gripper.position.set(0.76, 0.94, 0);
-    arm.add(gripper);
-    scene.add(arm);
-    addLabel('COMPACT ARM', -0.08, 1.45, 0.18, '#d9a73a', [1.25, 0.34, 1]);
+    const createCompactSixAxisArm = (x, y, z) => {
+      const group = new THREE.Group();
+      group.position.set(x, y, z);
+      const armMat = new THREE.MeshStandardMaterial({ color: '#d9a73a', metalness: 0.34, roughness: 0.34 });
+      const jointMat = new THREE.MeshStandardMaterial({ color: '#526169', metalness: 0.48, roughness: 0.26 });
+      const cableMat = new THREE.MeshStandardMaterial({ color: '#263330', metalness: 0.2, roughness: 0.42 });
+      const toolMat = new THREE.MeshStandardMaterial({ color: '#d8d1c2', metalness: 0.55, roughness: 0.24 });
+
+      const makeMesh = (geometry, material) => {
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        return mesh;
+      };
+      const addLocalCylinder = (parent, radius, height, material, position, rotation = [0, 0, 0], radialSegments = 28) => {
+        const mesh = makeMesh(new THREE.CylinderGeometry(radius, radius, height, radialSegments), material);
+        mesh.position.set(...position);
+        mesh.rotation.set(...rotation);
+        parent.add(mesh);
+        return mesh;
+      };
+      const addLocalBox = (parent, size, material, position, rotation = [0, 0, 0]) => {
+        const mesh = makeMesh(new THREE.BoxGeometry(...size), material);
+        mesh.position.set(...position);
+        mesh.rotation.set(...rotation);
+        parent.add(mesh);
+        return mesh;
+      };
+      const addLocalSphere = (parent, radius, material, position) => {
+        const mesh = makeMesh(new THREE.SphereGeometry(radius, 24, 16), material);
+        mesh.position.set(...position);
+        parent.add(mesh);
+        return mesh;
+      };
+      const addLocalBadge = (parent, text, position) => {
+        const canvas = document.createElement('canvas');
+        canvas.width = 256;
+        canvas.height = 128;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = 'rgba(38, 51, 48, 0.9)';
+        ctx.roundRect(22, 22, 212, 70, 18);
+        ctx.fill();
+        ctx.fillStyle = '#fffaf0';
+        ctx.font = '800 40px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(text, 128, 70);
+        const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas), transparent: true }));
+        sprite.position.set(...position);
+        sprite.scale.set(0.26, 0.13, 1);
+        sprite.userData = { baseY: position[1] };
+        parent.add(sprite);
+        return sprite;
+      };
+
+      addLocalBox(group, [0.62, 0.045, 0.5], jointMat, [0, 0.015, 0]);
+      const base = addLocalCylinder(group, 0.18, 0.13, jointMat, [0, 0.09, 0]);
+      const turntable = addLocalCylinder(group, 0.145, 0.09, armMat, [0, 0.2, 0]);
+      const baseRing = makeMesh(new THREE.TorusGeometry(0.19, 0.014, 8, 40), toolMat);
+      baseRing.position.set(0, 0.25, 0);
+      baseRing.rotation.x = Math.PI / 2;
+      group.add(baseRing);
+
+      const shoulder = new THREE.Group();
+      shoulder.position.set(0, 0.3, 0);
+      group.add(shoulder);
+      addLocalCylinder(shoulder, 0.105, 0.28, jointMat, [0, 0, 0], [Math.PI / 2, 0, 0]);
+      addLocalCylinder(shoulder, 0.074, 0.18, armMat, [0.012, 0.012, 0], [Math.PI / 2, 0, 0]);
+
+      const lowerLink = new THREE.Group();
+      shoulder.add(lowerLink);
+      [-0.045, 0.045].forEach((offsetZ) => {
+        addLocalCylinder(lowerLink, 0.028, 0.62, armMat, [0, 0.31, offsetZ], [0, 0, 0], 22);
+      });
+      addLocalBox(lowerLink, [0.11, 0.13, 0.17], armMat, [0, 0.28, 0]);
+      addLocalBox(lowerLink, [0.045, 0.58, 0.025], cableMat, [-0.07, 0.32, -0.07]);
+
+      const elbow = new THREE.Group();
+      elbow.position.set(0, 0.62, 0);
+      lowerLink.add(elbow);
+      addLocalCylinder(elbow, 0.095, 0.25, jointMat, [0, 0, 0], [Math.PI / 2, 0, 0], 28);
+      addLocalCylinder(elbow, 0.064, 0.17, armMat, [0.012, 0, 0], [Math.PI / 2, 0, 0], 24);
+
+      const upperLink = new THREE.Group();
+      elbow.add(upperLink);
+      [-0.036, 0.036].forEach((offsetZ) => {
+        addLocalCylinder(upperLink, 0.024, 0.48, armMat, [0, 0.24, offsetZ], [0, 0, 0], 20);
+      });
+      addLocalBox(upperLink, [0.09, 0.11, 0.15], armMat, [0, 0.22, 0]);
+      addLocalBox(upperLink, [0.038, 0.44, 0.022], cableMat, [-0.058, 0.25, -0.058]);
+
+      const wristPitch = new THREE.Group();
+      wristPitch.position.set(0, 0.48, 0);
+      upperLink.add(wristPitch);
+      addLocalCylinder(wristPitch, 0.074, 0.19, jointMat, [0, 0, 0], [Math.PI / 2, 0, 0], 26);
+      addLocalSphere(wristPitch, 0.06, armMat, [0.01, 0.01, 0]);
+
+      const wristRoll = new THREE.Group();
+      wristRoll.position.set(0, 0.15, 0);
+      wristPitch.add(wristRoll);
+      addLocalCylinder(wristRoll, 0.052, 0.19, armMat, [0, 0, 0], [0, 0, Math.PI / 2], 24);
+      addLocalCylinder(wristRoll, 0.042, 0.15, jointMat, [0, 0.1, 0], [0, 0, Math.PI / 2], 22);
+
+      const toolYaw = new THREE.Group();
+      toolYaw.position.set(0, 0.19, 0);
+      wristRoll.add(toolYaw);
+      addLocalCylinder(toolYaw, 0.042, 0.105, toolMat, [0, 0, 0], [0, 0, Math.PI / 2], 22);
+      const gripper = new THREE.Group();
+      gripper.position.set(0, 0.1, 0);
+      toolYaw.add(gripper);
+      addLocalBox(gripper, [0.18, 0.046, 0.12], toolMat, [0, 0, 0]);
+      const fingers = [-1, 1].map((side) => {
+        const finger = new THREE.Group();
+        finger.position.set(0.07, -0.03, side * 0.058);
+        addLocalCylinder(finger, 0.015, 0.042, jointMat, [0, 0, 0], [Math.PI / 2, 0, 0], 16);
+        addLocalBox(finger, [0.14, 0.026, 0.024], toolMat, [0.085, -0.02, side * 0.012], [0, 0, side * 0.12]);
+        gripper.add(finger);
+        return { finger, side };
+      });
+
+      const statusLight = addLocalSphere(group, 0.035, new THREE.MeshStandardMaterial({
+        color: '#8fb3c7',
+        emissive: '#2dd4bf',
+        emissiveIntensity: 0.35,
+        roughness: 0.18
+      }), [0.2, 0.24, 0.13]);
+      const jointBadges = [
+        addLocalBadge(group, 'J1', [-0.22, 0.28, 0.14]),
+        addLocalBadge(shoulder, 'J2', [-0.18, 0.16, 0.14]),
+        addLocalBadge(elbow, 'J3', [-0.16, 0.12, 0.14]),
+        addLocalBadge(wristPitch, 'J4', [-0.12, 0.1, 0.13]),
+        addLocalBadge(toolYaw, 'J5-6', [0.14, 0.08, 0.13])
+      ];
+
+      scene.add(group);
+      return {
+        group,
+        base,
+        turntable,
+        shoulder,
+        elbow,
+        wristPitch,
+        wristRoll,
+        toolYaw,
+        gripper,
+        fingers,
+        statusLight,
+        jointBadges
+      };
+    };
+
+    const arm = createCompactSixAxisArm(-0.05, 0.16, 0.04);
+    addLabel('6-AXIS ARM', -0.08, 1.45, 0.18, '#d9a73a', [1.25, 0.34, 1]);
 
     const poseByStage = {
-      feed: { y: -1.55, z: -0.05, lower: -0.78, upper: 1.08, grip: -0.12 },
-      starter: { y: -1.15, z: 0, lower: -0.36, upper: 0.58, grip: 0 },
-      mix: { y: -0.75, z: -0.03, lower: -0.62, upper: 0.86, grip: -0.08 },
-      bulk: { y: -0.45, z: 0.03, lower: -0.72, upper: 1.02, grip: 0.12 },
-      proof: { y: 0.32, z: 0.02, lower: -0.48, upper: 0.74, grip: 0 },
-      bake: { y: 1.08, z: -0.04, lower: -0.72, upper: 1.04, grip: -0.1 },
-      cool: { y: 1.42, z: 0.04, lower: -0.54, upper: 0.84, grip: 0.08 },
-      clean: { y: 2.55, z: 0.1, lower: -0.2, upper: 0.36, grip: 0.2 }
+      feed: { yaw: -1.55, z: -0.05, shoulder: -0.82, elbow: 1.14, wristPitch: -0.34, toolYaw: -0.16, grip: 0.075 },
+      starter: { yaw: -1.15, z: 0, shoulder: -0.44, elbow: 0.68, wristPitch: -0.28, toolYaw: 0.08, grip: 0.058 },
+      mix: { yaw: -0.75, z: -0.03, shoulder: -0.7, elbow: 0.96, wristPitch: -0.46, toolYaw: -0.12, grip: 0.04 },
+      bulk: { yaw: -0.45, z: 0.03, shoulder: -0.82, elbow: 1.08, wristPitch: -0.28, toolYaw: 0.18, grip: 0.048 },
+      proof: { yaw: 0.32, z: 0.02, shoulder: -0.52, elbow: 0.82, wristPitch: -0.38, toolYaw: 0.02, grip: 0.062 },
+      bake: { yaw: 1.08, z: -0.04, shoulder: -0.86, elbow: 1.16, wristPitch: -0.52, toolYaw: -0.16, grip: 0.035 },
+      cool: { yaw: 1.42, z: 0.04, shoulder: -0.58, elbow: 0.92, wristPitch: -0.34, toolYaw: 0.16, grip: 0.05 },
+      clean: { yaw: 2.55, z: 0.1, shoulder: -0.24, elbow: 0.42, wristPitch: -0.16, toolYaw: 0.36, grip: 0.092 }
     };
     const pathByStage = {
       feed: 0.02,
@@ -2299,11 +2433,24 @@ function HomeBreadScene({ model, schedule }) {
       });
 
       const pose = poseByStage[stage.id] || poseByStage.feed;
-      arm.rotation.y = pose.y + Math.sin(elapsed * 2.2) * 0.04;
-      arm.rotation.z = pose.z;
-      lower.rotation.z = pose.lower;
-      upper.rotation.z = pose.upper;
-      gripper.rotation.z = pose.grip;
+      arm.group.rotation.y = pose.yaw + Math.sin(elapsed * 2.2) * 0.04;
+      arm.group.rotation.z = pose.z;
+      arm.shoulder.rotation.z = pose.shoulder;
+      arm.elbow.rotation.z = pose.elbow;
+      arm.wristPitch.rotation.z = pose.wristPitch + Math.sin(elapsed * 2.5) * 0.03;
+      arm.wristRoll.rotation.y = elapsed * (stage.id === 'clean' ? 2.3 : 0.95);
+      arm.toolYaw.rotation.z = pose.toolYaw + (['mix', 'bulk', 'clean'].includes(stage.id) ? Math.sin(elapsed * 4.5) * 0.12 : 0);
+      arm.turntable.rotation.y = elapsed * 0.45;
+      arm.fingers.forEach(({ finger, side }) => {
+        const open = pose.grip + (['feed', 'clean'].includes(stage.id) ? Math.abs(Math.sin(elapsed * 3.2)) * 0.02 : 0);
+        finger.position.z = side * open;
+        finger.rotation.y = side * (0.16 + open);
+      });
+      arm.statusLight.material.emissiveIntensity = stage.id === 'clean' ? 0.7 + Math.sin(elapsed * 7) * 0.18 : 0.34;
+      arm.statusLight.scale.setScalar(stage.id === 'clean' ? 1.14 + Math.sin(elapsed * 7) * 0.08 : 1);
+      arm.jointBadges.forEach((badge, index) => {
+        badge.position.y = badge.userData.baseY + Math.sin(elapsed * 2 + index) * 0.006;
+      });
       cleanWave.material.opacity = stage.id === 'clean' ? 0.9 : 0.28;
       cleanWave.position.y = 0.51 + Math.sin(elapsed * 5) * 0.02;
       oven.material.emissive.set(stage.id === 'bake' ? '#6a2b15' : '#000000');
