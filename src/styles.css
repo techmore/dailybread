@@ -298,6 +298,7 @@ h1 {
 }
 
 .panel {
+  min-width: 0;
   padding: 24px;
 }
 
@@ -595,6 +596,134 @@ td:last-child {
   margin-top: 0;
 }
 
+.phaseOnePage .pageHead p {
+  max-width: 920px;
+}
+
+.phaseOneShowcase .workflowHeader {
+  align-items: start;
+}
+
+.phaseOneShowcase .scene {
+  min-height: 680px;
+}
+
+.phaseOneVerdict {
+  background: var(--evergreen);
+  border: 1px solid var(--evergreen);
+  border-radius: 8px;
+  color: #fff;
+  min-width: min(320px, 100%);
+  padding: 18px;
+}
+
+.phaseOneVerdict b,
+.phaseOneVerdict span {
+  display: block;
+}
+
+.phaseOneVerdict b {
+  font-size: 1.35rem;
+  line-height: 1.05;
+}
+
+.phaseOneVerdict span {
+  color: #d6ded6;
+  margin-top: 6px;
+}
+
+.phaseOneLayout {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.phaseOneLayout > * {
+  min-width: 0;
+}
+
+.phaseOneLayout .panel:nth-child(1),
+.phaseOneLayout .panel:nth-child(5),
+.phaseOneLayout .panel:nth-child(8) {
+  grid-column: 1 / -1;
+}
+
+.phaseOneStatement {
+  border-left: 5px solid var(--robot);
+  margin-bottom: 18px;
+  min-width: 0;
+  padding-left: 16px;
+}
+
+.phaseOneStatement strong {
+  display: block;
+  font-size: 1.25rem;
+  line-height: 1.18;
+  margin-bottom: 8px;
+  overflow-wrap: anywhere;
+}
+
+.phaseOneStatement p {
+  color: var(--ink-muted);
+  margin-bottom: 0;
+  max-width: 920px;
+}
+
+.phaseOnePrinciples {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.tightList {
+  color: var(--ink-muted);
+  margin: 0 0 16px;
+  padding-left: 20px;
+}
+
+.tightList li {
+  margin: 9px 0;
+}
+
+.warningList li::marker {
+  color: var(--crust);
+}
+
+.phaseRoadmap {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.phaseRoadmap article {
+  border-left: 4px solid var(--robot);
+  padding-left: 14px;
+}
+
+.phaseRoadmap span {
+  align-items: center;
+  background: var(--evergreen);
+  border-radius: 999px;
+  color: #fff;
+  display: inline-flex;
+  font-weight: 900;
+  height: 30px;
+  justify-content: center;
+  margin-bottom: 10px;
+  width: 30px;
+}
+
+.phaseRoadmap b {
+  display: block;
+  font-size: 1.05rem;
+}
+
+.phaseRoadmap p {
+  color: var(--ink-muted);
+  font-size: .92rem;
+  margin: 7px 0 0;
+}
+
 .sceneFallback {
   align-items: center;
   display: flex;
@@ -835,7 +964,10 @@ footer {
   .modelLayout,
   .autoGrid,
   .purchaseGrid,
-  .workflowHeader {
+  .workflowHeader,
+  .phaseOneLayout,
+  .phaseOnePrinciples,
+  .phaseRoadmap {
     grid-template-columns: 1fr;
   }
 
@@ -904,6 +1036,14 @@ footer {
 
   .cookieShowcase .scene {
     min-height: 420px;
+  }
+
+  .phaseOneShowcase .scene {
+    min-height: 480px;
+  }
+
+  .phaseOneStatement strong {
+    font-size: 1.08rem;
   }
 
   footer {

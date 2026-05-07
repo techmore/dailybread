@@ -217,7 +217,58 @@ const homePathPoints = [
   [0.55, 0.35, -0.95]
 ];
 
-const pages = ['overview', 'model', 'automation', 'cookies', 'home'];
+const phaseOneKpis = [
+  ['Daily output', '1 loaf/day'],
+  ['Customer install', '120V + water'],
+  ['Weekly touch time', '~5 min'],
+  ['Target MSRP', '$3.5k-$4.5k']
+];
+
+const phaseOneCostRows = [
+  ['Insulated appliance shell + washable liner', 1, 520, 'Countertop enclosure, guards, service panels, drip containment.'],
+  ['Integrated compact convection oven module', 1, 380, 'Use a certified heating core or oven partner, not a hacked retail oven.'],
+  ['Removable dough cartridge + mixer drive', 1, 310, 'Dishwasher-safe bowl, hook, scraper, lid, gasket, and quick-release drive.'],
+  ['Flour hopper, salt micro-doser, load cells', 1, 285, 'Weekly flour fill, monthly salt fill, anti-bridge agitator, sealed food path.'],
+  ['Water inlet, filter, flow meter, valves', 1, 185, '1/4 in water line, leak sensor, normally closed solenoid, flush path.'],
+  ['Starter pod + feed/discard cassette', 1, 220, 'Small maintained culture chamber with rise sensor and removable waste cup.'],
+  ['Controls, sensors, cloud recipe logic', 1, 340, 'Scale, temperature, humidity, door, current, camera optional, controller.'],
+  ['Rinse dock, crumb tray, service consumables', 1, 160, 'Low-water tool rinse, removable catch tray, starter waste cup.'],
+  ['Certification, packaging, QA allowance', 1, 450, 'Pilot allocation toward safety testing, manuals, support, and final assembly.']
+];
+
+const phaseOneCycle = [
+  ['8:00 PM', 'Starter refresh', 'Water and flour feed the culture; the system tracks rise and aroma/temperature proxy signals.'],
+  ['5:45 AM', 'Dose + mix', 'Flour, salt, starter, and water are weighed into the dough cartridge and mixed.'],
+  ['6:15 AM', 'Fold + proof', 'The same sealed cartridge handles folds, warm proofing, and dough containment.'],
+  ['9:25 AM', 'Bake', 'A shuttle moves the pan into the interlocked oven module for one controlled loaf.'],
+  ['10:25 AM', 'Cool hold', 'The loaf rests on a vented landing tray; the app notifies the customer.'],
+  ['10:45 AM', 'Rinse dock', 'The mixer tool flushes, crumbs collect, and the user later empties removable trays.']
+];
+
+const phaseOneInstallRows = [
+  ['Power', '120 V grounded outlet; target a dedicated 15 A circuit because the oven core can approach 1800 W.'],
+  ['Water', '1/4 in refrigerator-style line, inline shutoff, filter, normally closed valve, leak tray, and leak sensor.'],
+  ['Dry ingredients', '2.5-3 kg flour hopper, small salt capsule, sealed lids, agitator, and load-cell verification.'],
+  ['Starter', 'Customer keeps one starter pod installed; the machine feeds it and routes discard to a removable cup.'],
+  ['Cleaning', 'Dishwasher-safe dough cartridge plus daily low-water rinse; no hidden food-contact cavities.'],
+  ['Connectivity', 'Local controls work offline; app handles schedule, alerts, maintenance, and recipe tuning.']
+];
+
+const phaseOneRoadmap = [
+  ['Bench Alpha', 'Prove flour dosing, water dosing, starter maintenance, and one-bowl mixing with real dough.'],
+  ['EVT', 'Build 5-10 enclosed units with leak detection, interlocks, repeatable bake profiles, and swappable cartridges.'],
+  ['DVT', 'Run 30-day home abuse tests: flour bridging, crust outcomes, cleaning burden, water leaks, and overheating.'],
+  ['Pilot', 'Place 20 units with friendly users; measure actual customer touch time, failed loaves, support tickets, and retention.']
+];
+
+const phaseOneReferences = [
+  ['Breville BOV860 reference', '18.9 x 15.9 x 10.9 in, $349.95 reference countertop oven class.'],
+  ['mechArm Pi reference', '6-axis, 250 g payload, 270 mm reach; useful for demos but too limited for shipped dough handling.'],
+  ['NSF/ANSI food equipment direction', 'Design around material safety, cleanability, sanitation, construction, and performance.'],
+  ['UL 1026 direction', 'Household electric cooking appliances rated 250 V or less are in the relevant safety family.']
+];
+
+const pages = ['overview', 'model', 'automation', 'cookies', 'home', 'phase-one'];
 const assumptionStorageKey = 'dailybreadAssumptions';
 
 const assumptionMinimums = {
@@ -821,6 +872,7 @@ function App() {
       {page === 'automation' && <Automation model={model} multiplier={multiplier} setMultiplier={setMultiplier} assumptions={safeAssumptions} />}
       {page === 'cookies' && <Cookies assumptions={safeAssumptions} />}
       {page === 'home' && <HomeDailyBread assumptions={safeAssumptions} />}
+      {page === 'phase-one' && <PhaseOneHomeProduct />}
       <Footer />
     </main>
   );
@@ -838,7 +890,8 @@ function Nav({ page, setPage }) {
           ['model', 'Model'],
           ['automation', 'Automation'],
           ['cookies', 'Cookies'],
-          ['home', 'Home Daily Bread']
+          ['home', 'Home Daily Bread'],
+          ['phase-one', 'Phase 1']
         ].map(([id, label]) => (
           <button className={page === id ? 'active' : ''} onClick={() => setPage(id)} key={id}>
             {label}
@@ -867,6 +920,9 @@ function Overview({ model, setPage }) {
             <button className="secondary" onClick={() => setPage('home')}>
               Explore home cell
             </button>
+            <button className="secondary" onClick={() => setPage('phase-one')}>
+              Phase 1 product
+            </button>
             <button className="secondary" onClick={() => setPage('cookies')}>
               Model cookies
             </button>
@@ -874,6 +930,7 @@ function Overview({ model, setPage }) {
           <div className="chips">
             <span>50 loaf lunch target</span>
             <span>Atlas Craft 3 oven</span>
+            <span>Phase 1 home product</span>
             <span>Cookie batch mode</span>
             <span>School delivery mode</span>
           </div>
@@ -1407,6 +1464,458 @@ function CookieScene({ model }) {
         <div>
           <strong>3D renderer unavailable</strong>
           <span>The cookie model still runs below; open this page in a browser with WebGL enabled to view the animated cookie line.</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PhaseOneHomeProduct() {
+  const bomTotal = phaseOneCostRows.reduce((sum, [, qty, unit]) => sum + qty * unit, 0);
+  const customerSteps = [
+    'Fill the flour hopper about once a week.',
+    'Keep the starter pod installed; empty the discard cup when prompted.',
+    'Attach the water line or use a fallback tank during early pilots.',
+    'Remove the dough cartridge and crumb tray for dishwasher cleaning.',
+    'Pick a bake schedule and pull the finished loaf after cool hold.'
+  ];
+  const dontShip = [
+    'No exposed hobby arm doing hot oven-door work in the first sellable unit.',
+    'No slicing in Phase 1; sliced bread adds crumbs, blades, cleaning, and liability.',
+    'No multi-loaf throughput promise until one-loaf reliability is boring.',
+    'No hidden wet flour paths; every food-contact part must be removable or flushable.',
+    'No fully unattended claim until leak, thermal, jam, and sanitation tests are proven.'
+  ];
+
+  return (
+    <section className="page phaseOnePage">
+      <div className="pageHead">
+        <p className="eyebrow">Phase 1 home product</p>
+        <h1>The first sellable Daily Home Bread should be a closed countertop bread cell.</h1>
+        <p>My recommendation is not to ship a general-purpose robot arm first. Ship a simpler appliance: sealed dry hoppers, water-line dosing, a maintained starter pod, a removable dough cartridge, a proof/bake module, and a rinse dock. It is less flashy, but it is far more likely to be safe, cleanable, supportable, and repeatable in real homes.</p>
+      </div>
+
+      <div className="pitchStrip">
+        {phaseOneKpis.map(([label, value]) => (
+          <Metric key={label} label={label} value={value} />
+        ))}
+      </div>
+
+      <section className="workflowShowcase phaseOneShowcase">
+        <div className="workflowHeader">
+          <div>
+            <p className="eyebrow">Recommended MVP architecture</p>
+            <h2>Fixed appliance mechanisms first; robotics as a later premium layer.</h2>
+            <div className="ingredientLegend">
+              {[
+                ['Water line', 'H2O', '#8fb3c7'],
+                ['Flour hopper', 'F', '#efe3bf'],
+                ['Starter pod', 'S', '#d0a85c'],
+                ['Heat chamber', '450F', '#f0a33c'],
+                ['Rinse dock', 'CIP', '#dfead1']
+              ].map(([label, short, color]) => (
+                <span key={label}>
+                  <b style={{ background: color }}>{short}</b>
+                  {label}
+                </span>
+              ))}
+            </div>
+          </div>
+          <div className="phaseOneVerdict">
+            <b>Best Phase 1</b>
+            <span>One excellent loaf per day, reliably.</span>
+          </div>
+        </div>
+        <PhaseOneScene />
+      </section>
+
+      <div className="phaseOneLayout">
+        <Panel title="Product Stance">
+          <div className="phaseOneStatement">
+            <strong>Build the appliance around food-safe repeatability, not around a cool robot.</strong>
+            <p>A sellable home unit should dose ingredients by weight, keep the messy dough inside a removable cartridge, use interlocked heat, and make cleaning obvious. The customer buys fresh bread with low effort, not a science project on their counter.</p>
+          </div>
+          <div className="phaseOnePrinciples">
+            <Feature icon={PackageCheck} title="Closed Food Path" text="Flour, salt, starter, water, dough, and rinse water stay inside sealed or removable modules." />
+            <Feature icon={Waves} title="Water-Line Ready" text="Use a 1/4 in line, shutoff, filter, flow meter, solenoid valve, leak tray, and tank fallback for pilots." />
+            <Feature icon={RotateCcw} title="Serviceable Core" text="The dough cartridge, starter cup, crumb tray, and rinse tray come out without tools." />
+          </div>
+        </Panel>
+
+        <Panel title="Customer Experience">
+          <ul className="tightList">
+            {customerSteps.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+          <p className="note">The customer should not measure flour, feed starter by hand, touch raw dough, or clean inside a hidden machine cavity. The job is refill, empty, and approve the schedule.</p>
+        </Panel>
+
+        <Panel title="Automated Daily Cycle">
+          <table>
+            <tbody>
+              {phaseOneCycle.map(([time, stage, detail]) => (
+                <tr key={stage}>
+                  <th>{time}</th>
+                  <td>{stage}</td>
+                  <td>{detail}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Panel>
+
+        <Panel title="Install and Maintenance Requirements">
+          <table>
+            <tbody>
+              {phaseOneInstallRows.map(([item, detail]) => (
+                <tr key={item}>
+                  <th>{item}</th>
+                  <td>{detail}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Panel>
+
+        <Panel title="Phase 1 BOM and Pricing Logic">
+          <div className="kpiRow">
+            <Metric label="Pilot BOM" value={formatMoney(bomTotal)} />
+            <Metric label="Retail target" value="$3.5k-$4.5k" />
+            <Metric label="Warranty reserve" value="10%-15%" />
+            <Metric label="First output" value="Unsliced loaf" />
+          </div>
+          <PurchaseTable title="Sellable Prototype Allowance" rows={phaseOneCostRows} />
+          <p className="note">These numbers are planning allowances, not supplier quotes. The main thesis is that a fixed-mechanism appliance can land below the cost and risk of a robot-arm-first product.</p>
+        </Panel>
+
+        <Panel title="Do Not Ship in Phase 1">
+          <ul className="tightList warningList">
+            {dontShip.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </Panel>
+
+        <Panel title="Pilot Roadmap">
+          <div className="phaseRoadmap">
+            {phaseOneRoadmap.map(([stage, detail], index) => (
+              <article key={stage}>
+                <span>{index + 1}</span>
+                <b>{stage}</b>
+                <p>{detail}</p>
+              </article>
+            ))}
+          </div>
+        </Panel>
+
+        <Panel title="Reference Basis and Certification Targets">
+          <table>
+            <tbody>
+              {phaseOneReferences.map(([name, detail]) => (
+                <tr key={name}>
+                  <th>{name}</th>
+                  <td>{detail}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="note">For a real product, the certification plan needs a qualified test lab and counsel. The page uses public reference points to shape the product direction: countertop cooking appliance safety, food-contact material safety, cleanability, and leak/thermal interlocks.</p>
+        </Panel>
+      </div>
+    </section>
+  );
+}
+
+function PhaseOneScene() {
+  const mount = useRef(null);
+  const [sceneError, setSceneError] = useState(false);
+
+  useEffect(() => {
+    const el = mount.current;
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color('#f7f2e8');
+    const camera = new THREE.PerspectiveCamera(42, el.clientWidth / el.clientHeight, 0.1, 100);
+    const target = new THREE.Vector3(0, 0.72, 0.05);
+    const positionCamera = () => {
+      const aspect = el.clientWidth / Math.max(1, el.clientHeight);
+      const compact = aspect < 1;
+      camera.position.set(compact ? 0.65 : 4.5, compact ? 4.25 : 3.7, compact ? 12.8 : 6.9);
+      camera.lookAt(compact ? new THREE.Vector3(0, 0.62, 0) : target);
+    };
+    positionCamera();
+
+    const rendererCanvas = document.createElement('canvas');
+    const contextOptions = { antialias: true };
+    const webglContext = rendererCanvas.getContext('webgl2', contextOptions) || rendererCanvas.getContext('webgl', contextOptions);
+    if (!webglContext) {
+      setSceneError(true);
+      return undefined;
+    }
+
+    let renderer;
+    try {
+      renderer = new THREE.WebGLRenderer({ canvas: rendererCanvas, context: webglContext, antialias: true });
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.05;
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      setSceneError(false);
+    } catch {
+      setSceneError(true);
+      return undefined;
+    }
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(el.clientWidth, el.clientHeight);
+    el.appendChild(renderer.domElement);
+
+    const cell = new THREE.Group();
+    scene.add(cell);
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x7a6043, 2.45));
+    const keyLight = new THREE.DirectionalLight(0xffffff, 1.35);
+    keyLight.position.set(4, 6, 5);
+    keyLight.castShadow = true;
+    scene.add(keyLight);
+
+    const addBox = (x, y, z, w, h, d, color, opacity = 1, parent = cell) => {
+      const mesh = new THREE.Mesh(
+        new THREE.BoxGeometry(w, h, d),
+        new THREE.MeshStandardMaterial({ color, roughness: 0.58, metalness: 0.08, transparent: opacity < 1, opacity })
+      );
+      mesh.position.set(x, y, z);
+      mesh.castShadow = opacity >= 0.55;
+      mesh.receiveShadow = true;
+      parent.add(mesh);
+      return mesh;
+    };
+
+    const addCylinder = (x, y, z, radius, height, color, opacity = 1, parent = cell) => {
+      const mesh = new THREE.Mesh(
+        new THREE.CylinderGeometry(radius, radius, height, 36),
+        new THREE.MeshStandardMaterial({ color, roughness: 0.48, metalness: 0.12, transparent: opacity < 1, opacity })
+      );
+      mesh.position.set(x, y, z);
+      mesh.castShadow = opacity >= 0.55;
+      mesh.receiveShadow = true;
+      parent.add(mesh);
+      return mesh;
+    };
+
+    const addLabel = (text, x, y, z, accent = '#203734', scale = [1.15, 0.32, 1]) => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 640;
+      canvas.height = 170;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = 'rgba(255, 250, 240, 0.95)';
+      ctx.roundRect(20, 20, 600, 96, 18);
+      ctx.fill();
+      ctx.strokeStyle = accent;
+      ctx.lineWidth = 7;
+      ctx.stroke();
+      ctx.fillStyle = '#1a2421';
+      ctx.font = '800 38px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(text, 320, 80);
+      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas), transparent: true }));
+      sprite.position.set(x, y, z);
+      sprite.scale.set(...scale);
+      cell.add(sprite);
+      return sprite;
+    };
+
+    const addTube = (points, color, radius = 0.014, opacity = 1) => {
+      const curve = new THREE.CatmullRomCurve3(points.map((point) => new THREE.Vector3(...point)));
+      const mesh = new THREE.Mesh(
+        new THREE.TubeGeometry(curve, 42, radius, 10),
+        new THREE.MeshStandardMaterial({ color, roughness: 0.36, metalness: 0.18, transparent: opacity < 1, opacity })
+      );
+      mesh.castShadow = opacity >= 0.55;
+      cell.add(mesh);
+      return { mesh, curve };
+    };
+
+    const createBadge = (text, color, x, y, z) => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 256;
+      canvas.height = 256;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(128, 112, 68, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#1a2421';
+      ctx.lineWidth = 8;
+      ctx.stroke();
+      ctx.fillStyle = '#1a2421';
+      ctx.font = text.length > 3 ? '800 38px Arial' : '900 62px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(text, 128, 128);
+      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas), transparent: true }));
+      sprite.position.set(x, y, z);
+      sprite.scale.set(0.42, 0.42, 1);
+      cell.add(sprite);
+      return sprite;
+    };
+
+    addBox(0, -0.06, 0, 6.1, 0.12, 2.6, '#d8c89f');
+    addBox(0, 1.05, -1.34, 6.1, 2.2, 0.05, '#d8c89f', 0.25);
+    addBox(-3.05, 1.05, 0, 0.05, 2.2, 2.6, '#d8c89f', 0.18);
+    addBox(3.05, 1.05, 0, 0.05, 2.2, 2.6, '#d8c89f', 0.18);
+    addLabel('PHASE 1 CLOSED BREAD CELL', 0, 2.02, 1.1, '#203734', [2.1, 0.42, 1]);
+
+    addLabel('WATER + LEAK SHUTOFF', -2.55, 1.46, -0.9, '#8fb3c7', [1.25, 0.3, 1]);
+    addCylinder(-2.7, 0.48, -0.88, 0.16, 0.58, '#8fb3c7', 0.72);
+    addBox(-2.7, 0.17, -0.88, 0.7, 0.1, 0.44, '#dfead1', 0.72);
+    addTube([[-3.2, 0.55, -1.05], [-2.7, 0.55, -0.88], [-1.35, 0.72, -0.18]], '#8fb3c7', 0.018, 0.9);
+
+    addLabel('FLOUR + SALT HOPPERS', -2.0, 1.62, 0.52, '#d0a85c', [1.45, 0.32, 1]);
+    const flourHopper = addCylinder(-2.18, 0.9, 0.4, 0.28, 0.9, '#efe3bf', 0.58);
+    const flourFunnel = new THREE.Mesh(
+      new THREE.ConeGeometry(0.3, 0.36, 4),
+      new THREE.MeshStandardMaterial({ color: '#efe3bf', roughness: 0.56, transparent: true, opacity: 0.82 })
+    );
+    flourFunnel.position.set(-2.18, 0.25, 0.4);
+    flourFunnel.rotation.y = Math.PI / 4;
+    cell.add(flourFunnel);
+    addCylinder(-1.72, 0.62, 0.54, 0.12, 0.5, '#f7f7ef', 0.72);
+    addTube([[-2.18, 0.24, 0.4], [-1.38, 0.62, 0.08]], '#efe3bf', 0.016, 0.82);
+    addTube([[-1.72, 0.36, 0.54], [-1.22, 0.64, 0.1]], '#f7f7ef', 0.01, 0.82);
+
+    addLabel('STARTER POD', -1.52, 1.36, -0.64, '#d0a85c', [1.0, 0.28, 1]);
+    const starterGlass = addCylinder(-1.52, 0.58, -0.64, 0.24, 0.72, '#ffffff', 0.28);
+    const starterFill = addCylinder(-1.52, 0.36, -0.64, 0.2, 0.26, '#d0a85c', 0.88);
+    addBox(-1.52, 0.12, -0.64, 0.62, 0.08, 0.52, '#596a70', 0.65);
+    addTube([[-1.52, 0.84, -0.64], [-0.86, 0.78, -0.2]], '#d0a85c', 0.014, 0.8);
+
+    addLabel('REMOVABLE DOUGH CARTRIDGE', -0.48, 1.38, 0.2, '#203734', [1.62, 0.32, 1]);
+    addBox(-0.48, 0.34, 0.22, 1.08, 0.16, 0.76, '#4f6548');
+    const cartridge = addBox(-0.48, 0.68, 0.22, 0.96, 0.55, 0.7, '#dfead1', 0.36);
+    const dough = new THREE.Mesh(
+      new THREE.SphereGeometry(0.25, 32, 18),
+      new THREE.MeshStandardMaterial({ color: '#d0a85c', roughness: 0.9 })
+    );
+    dough.scale.set(1.3, 0.52, 0.9);
+    dough.position.set(-0.48, 0.62, 0.22);
+    dough.castShadow = true;
+    cell.add(dough);
+    const mixerHook = addBox(-0.48, 1.04, 0.22, 0.06, 0.42, 0.06, '#d9a73a');
+    mixerHook.rotation.z = 0.52;
+
+    addLabel('INTERLOCKED OVEN MODULE', 1.2, 1.44, -0.28, '#9c442e', [1.52, 0.32, 1]);
+    addBox(1.2, 0.68, -0.28, 1.45, 0.95, 0.9, '#4f6474');
+    const ovenGlass = addBox(1.05, 0.64, 0.2, 0.9, 0.52, 0.04, '#101817', 0.78);
+    const ovenGlow = addBox(1.05, 0.64, 0.23, 0.78, 0.4, 0.03, '#f0a33c', 0.22);
+    addCylinder(1.05, 0.76, 0.27, 0.018, 0.68, '#f3b665').rotation.z = Math.PI / 2;
+    addCylinder(1.05, 0.53, 0.27, 0.018, 0.68, '#f3b665').rotation.z = Math.PI / 2;
+    addBox(1.82, 0.65, 0.24, 0.22, 0.62, 0.05, '#273532');
+    createBadge('HEAT', '#f0a33c', 1.82, 0.68, 0.35);
+
+    addLabel('COOL + RINSE SERVICE TRAY', 2.34, 1.2, 0.56, '#71865c', [1.5, 0.3, 1]);
+    addBox(2.34, 0.28, 0.56, 0.9, 0.08, 0.72, '#c8c2b5');
+    addBox(2.38, 0.2, -0.7, 0.9, 0.14, 0.46, '#8fb3c7', 0.62);
+    const cleanPulse = addBox(2.38, 0.36, -0.7, 0.68, 0.04, 0.32, '#8fb3c7', 0.68);
+    const finishedLoaf = new THREE.Mesh(
+      new THREE.SphereGeometry(0.22, 32, 18),
+      new THREE.MeshStandardMaterial({ color: '#b96f35', roughness: 0.86 })
+    );
+    finishedLoaf.scale.set(1.45, 0.55, 0.9);
+    finishedLoaf.position.set(2.28, 0.44, 0.56);
+    finishedLoaf.castShadow = true;
+    cell.add(finishedLoaf);
+
+    addLabel('FIXED SHUTTLE, NOT HOBBY ARM', 0.38, 1.78, 0.78, '#d9a73a', [1.75, 0.32, 1]);
+    addBox(0.45, 1.45, 0.72, 3.2, 0.06, 0.06, '#596a70');
+    addBox(0.45, 1.34, 0.72, 3.2, 0.035, 0.035, '#d8d1c2');
+    const carriage = new THREE.Group();
+    const carriageBody = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.18, 0.22), new THREE.MeshStandardMaterial({ color: '#d9a73a', roughness: 0.36, metalness: 0.26 }));
+    carriageBody.castShadow = true;
+    carriage.add(carriageBody);
+    const tool = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.38, 0.08), new THREE.MeshStandardMaterial({ color: '#596a70', roughness: 0.32, metalness: 0.38 }));
+    tool.position.y = -0.28;
+    carriage.add(tool);
+    cell.add(carriage);
+
+    const shuttle = new THREE.Group();
+    shuttle.add(new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.05, 0.36), new THREE.MeshStandardMaterial({ color: '#596a70', roughness: 0.6 })));
+    const shuttleLoaf = new THREE.Mesh(new THREE.SphereGeometry(0.17, 24, 14), new THREE.MeshStandardMaterial({ color: '#d0a85c', roughness: 0.86 }));
+    shuttleLoaf.scale.set(1.25, 0.58, 0.82);
+    shuttleLoaf.position.y = 0.12;
+    shuttle.add(shuttleLoaf);
+    cell.add(shuttle);
+    const shuttlePath = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(-0.48, 0.42, 0.42),
+      new THREE.Vector3(0.3, 0.42, 0.35),
+      new THREE.Vector3(1.08, 0.42, 0.16),
+      new THREE.Vector3(2.28, 0.42, 0.56)
+    ]);
+    cell.add(new THREE.Mesh(new THREE.TubeGeometry(shuttlePath, 64, 0.018, 8), new THREE.MeshStandardMaterial({ color: '#71865c' })));
+
+    const feedBadges = [
+      { text: 'F', color: '#efe3bf', start: new THREE.Vector3(-2.2, 1.22, 0.4), end: new THREE.Vector3(-0.6, 0.98, 0.26) },
+      { text: 'H2O', color: '#8fb3c7', start: new THREE.Vector3(-2.7, 0.88, -0.88), end: new THREE.Vector3(-0.45, 0.96, 0.18) },
+      { text: 'S', color: '#d0a85c', start: new THREE.Vector3(-1.52, 0.92, -0.64), end: new THREE.Vector3(-0.35, 0.92, 0.08) },
+      { text: 'NaCl', color: '#f7f7ef', start: new THREE.Vector3(-1.72, 0.82, 0.54), end: new THREE.Vector3(-0.3, 0.9, 0.22) }
+    ].map((item) => ({ ...item, sprite: createBadge(item.text, item.color, item.start.x, item.start.y, item.start.z) }));
+
+    let raf;
+    const startedAt = performance.now();
+    const animate = () => {
+      const elapsed = (performance.now() - startedAt) / 1000;
+      const loop = (elapsed * 0.07) % 1;
+      feedBadges.forEach((item, index) => {
+        const t = (loop * 2.2 + index * 0.18) % 1;
+        const active = t < 0.78;
+        item.sprite.position.lerpVectors(item.start, item.end, active ? t / 0.78 : 0);
+        item.sprite.position.y += active ? Math.sin(t * Math.PI) * 0.16 : Math.sin(elapsed * 1.4 + index) * 0.012;
+        item.sprite.material.opacity = active ? 1 : 0.35;
+      });
+      const shuttleT = loop < 0.72 ? loop / 0.72 : 0.99;
+      shuttle.position.copy(shuttlePath.getPointAt(shuttleT));
+      shuttle.visible = loop > 0.16 && loop < 0.9;
+      shuttleLoaf.material.color.set(loop > 0.58 ? '#b96f35' : '#d0a85c');
+      carriage.position.set(THREE.MathUtils.lerp(-0.95, 1.85, (Math.sin(elapsed * 0.8) + 1) / 2), 1.42, 0.72);
+      carriage.rotation.y = Math.sin(elapsed * 1.1) * 0.12;
+      starterFill.scale.y = 1 + Math.sin(elapsed * 1.2) * 0.16;
+      starterFill.position.y = 0.36 + Math.sin(elapsed * 1.2) * 0.02;
+      flourHopper.rotation.y += 0.004;
+      mixerHook.rotation.y += 0.12;
+      dough.scale.set(1.22 + Math.sin(elapsed * 2.1) * 0.04, 0.52 + Math.sin(elapsed * 2.8) * 0.02, 0.9);
+      cartridge.material.opacity = 0.32 + Math.sin(elapsed * 1.8) * 0.04;
+      ovenGlow.material.opacity = 0.22 + Math.sin(elapsed * 5) * 0.1;
+      cleanPulse.material.opacity = 0.35 + Math.sin(elapsed * 4) * 0.22;
+      cleanPulse.position.y = 0.36 + Math.sin(elapsed * 5) * 0.018;
+      finishedLoaf.visible = loop > 0.7 || loop < 0.08;
+      cell.rotation.y = Math.sin(elapsed * 0.16) * 0.08;
+      renderer.render(scene, camera);
+      raf = requestAnimationFrame(animate);
+    };
+    animate();
+
+    const resize = () => {
+      renderer.setSize(el.clientWidth, el.clientHeight);
+      camera.aspect = el.clientWidth / el.clientHeight;
+      camera.updateProjectionMatrix();
+      positionCamera();
+    };
+    window.addEventListener('resize', resize);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('resize', resize);
+      renderer.dispose();
+      if (renderer.domElement.parentNode === el) {
+        el.removeChild(renderer.domElement);
+      }
+    };
+  }, []);
+
+  return (
+    <div className={`scene phaseOneScene ${sceneError ? 'sceneFallback' : ''}`} ref={mount}>
+      {sceneError && (
+        <div>
+          <strong>3D renderer unavailable</strong>
+          <span>The Phase 1 product plan still appears below; open this page in a browser with WebGL enabled to view the animated appliance concept.</span>
         </div>
       )}
     </div>
