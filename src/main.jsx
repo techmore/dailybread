@@ -1303,7 +1303,7 @@ function CookieScene({ model }) {
       renderer.toneMapping = THREE.ACESFilmicToneMapping;
       renderer.toneMappingExposure = 1.03;
       renderer.shadowMap.enabled = true;
-      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      renderer.shadowMap.type = THREE.PCFShadowMap;
       setSceneError(false);
     } catch {
       setSceneError(true);
@@ -1660,7 +1660,7 @@ function PhaseOneScene() {
       renderer.toneMapping = THREE.ACESFilmicToneMapping;
       renderer.toneMappingExposure = 1.05;
       renderer.shadowMap.enabled = true;
-      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      renderer.shadowMap.type = THREE.PCFShadowMap;
       setSceneError(false);
     } catch {
       setSceneError(true);
@@ -2108,7 +2108,7 @@ function HomeBreadScene({ model, schedule }) {
       renderer.toneMapping = THREE.ACESFilmicToneMapping;
       renderer.toneMappingExposure = 1.05;
       renderer.shadowMap.enabled = true;
-      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      renderer.shadowMap.type = THREE.PCFShadowMap;
       setSceneError(false);
     } catch {
       setSceneError(true);
@@ -3247,7 +3247,7 @@ function ContainerScene({ model, multiplier, schedule }) {
       renderer.toneMapping = THREE.ACESFilmicToneMapping;
       renderer.toneMappingExposure = 1.04;
       renderer.shadowMap.enabled = true;
-      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      renderer.shadowMap.type = THREE.PCFShadowMap;
       setSceneError(false);
     } catch {
       setSceneError(true);
