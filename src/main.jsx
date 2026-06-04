@@ -218,54 +218,90 @@ const homePathPoints = [
 ];
 
 const phaseOneKpis = [
-  ['Daily output', '1 loaf/day'],
+  ['Control stack', 'ESP32 + Raspberry Pi'],
+  ['Daily output', '1-4 loaves/day'],
   ['Customer install', '120V + water'],
-  ['Weekly touch time', '~5 min'],
-  ['Target MSRP', '$3.5k-$4.5k']
+  ['Weekly touch time', '~10 min'],
+  ['Target MSRP', '$2.4k-$5.5k']
 ];
 
 const phaseOneCostRows = [
-  ['Insulated appliance shell + washable liner', 1, 520, 'Countertop enclosure, guards, service panels, drip containment.'],
-  ['Integrated compact convection oven module', 1, 380, 'Use a certified heating core or oven partner, not a hacked retail oven.'],
-  ['Removable dough cartridge + mixer drive', 1, 310, 'Dishwasher-safe bowl, hook, scraper, lid, gasket, and quick-release drive.'],
-  ['Flour hopper, salt micro-doser, load cells', 1, 285, 'Weekly flour fill, monthly salt fill, anti-bridge agitator, sealed food path.'],
+  ['Esp32 control board + relay / SSR layer', 1, 42, 'Local safety logic, temp sensing, heater control, pumps, switches, interlocks.'],
+  ['Raspberry Pi vision / orchestration node', 1, 85, 'Recipe engine, UI, notifications, logs, remote access, and camera if needed.'],
+  ['Load cells + ADC + ingredient scales', 3, 38, 'Starter, flour, and water measurement with calibration support.'],
+  ['Starter station heater + stir drive', 1, 210, 'Keep the culture warm and gently mixed without manual feeding each cycle.'],
+  ['Proofing vessel + temp / humidity control', 1, 265, 'Covered proof chamber, fan, and sensors for resting / rise.'],
+  ['Mixer / fold mechanism', 1, 390, 'Hook-based mixing or a taffy-style folding arm if needed for denser dough.'],
+  ['Conveyor / transfer tray system', 1, 310, 'Moves dough between starter, proof, shape, bake, and rest stations.'],
+  ['Microwave-oven-like bake module', 1, 480, 'Compact heated chamber with interlocks, airflow, and repeatable bake profiles.'],
+  ['Post-bake rest / cool station', 1, 120, 'Ventilated rest area so multi-unit runs can stack without immediate evacuation.'],
+  ['Food-safe enclosure + washable liner', 1, 620, 'Countertop shell, drip containment, removable food-contact panels.'],
   ['Water inlet, filter, flow meter, valves', 1, 185, '1/4 in water line, leak sensor, normally closed solenoid, flush path.'],
-  ['Starter pod + feed/discard cassette', 1, 220, 'Small maintained culture chamber with rise sensor and removable waste cup.'],
-  ['Controls, sensors, cloud recipe logic', 1, 340, 'Scale, temperature, humidity, door, current, camera optional, controller.'],
-  ['Rinse dock, crumb tray, service consumables', 1, 160, 'Low-water tool rinse, removable catch tray, starter waste cup.'],
   ['Certification, packaging, QA allowance', 1, 450, 'Pilot allocation toward safety testing, manuals, support, and final assembly.']
 ];
 
+const phaseOneRetailCostRows = [
+  ['Esp32 control board + relay / SSR layer', 1, 68, 'Higher-reliability board set, harnessing, and protective enclosure.'],
+  ['Raspberry Pi vision / orchestration node', 1, 115, 'Pi, storage, enclosure, camera support, and remote diagnostics.'],
+  ['Load cells + ADC + ingredient scales', 3, 54, 'Calibrated sensors, mounts, and better packaging.'],
+  ['Starter station heater + stir drive', 1, 340, 'Food-safe heated chamber, motor, bearings, and service access.'],
+  ['Proofing vessel + temp / humidity control', 1, 420, 'Insulated proof vessel, fans, sensors, and lid interlocks.'],
+  ['Mixer / fold mechanism', 1, 590, 'Refined dough hook / folding mechanism and motorized drive.'],
+  ['Conveyor / transfer tray system', 1, 420, 'Refined transfer path, guards, and alignment hardware.'],
+  ['Microwave-oven-like bake module', 1, 790, 'Certified heat chamber, airflow, interlocks, and controls.'],
+  ['Post-bake rest / cool station', 1, 190, 'Expanded resting bay and temperature-safe ventilation.'],
+  ['Food-safe enclosure + washable liner', 1, 980, 'Customer-safe shell, doors, drip control, and removable liners.'],
+  ['Water inlet, filter, flow meter, valves', 1, 240, 'Improved water path, pump, leak protection, and fittings.'],
+  ['Certification, packaging, QA allowance', 1, 850, 'Certification, support, manuals, and final assembly reserve.']
+];
+
 const phaseOneCycle = [
-  ['8:00 PM', 'Starter refresh', 'Water and flour feed the culture; the system tracks rise and aroma/temperature proxy signals.'],
-  ['5:45 AM', 'Dose + mix', 'Flour, salt, starter, and water are weighed into the dough cartridge and mixed.'],
-  ['6:15 AM', 'Fold + proof', 'The same sealed cartridge handles folds, warm proofing, and dough containment.'],
-  ['9:25 AM', 'Bake', 'A shuttle moves the pan into the interlocked oven module for one controlled loaf.'],
-  ['10:25 AM', 'Cool hold', 'The loaf rests on a vented landing tray; the app notifies the customer.'],
-  ['10:45 AM', 'Rinse dock', 'The mixer tool flushes, crumbs collect, and the user later empties removable trays.']
+  ['Stage 1', 'Starter maintenance', 'Heat, stir, and weigh the starter so the culture stays active and predictable.'],
+  ['Stage 2', 'Proof vessel', 'Add flour, water, salt, and starter, then let the vessel rest under control.'],
+  ['Stage 3', 'Shape / transfer', 'Move dough into a denser formation path or pan before bake.'],
+  ['Stage 4', 'Bake module', 'Load the compact heat chamber, bake, and emit ready / done notifications.'],
+  ['Stage 5', 'Post-bake rest', 'Let multiple units cool or rest without immediate manual evacuation.']
 ];
 
 const phaseOneInstallRows = [
-  ['Power', '120 V grounded outlet; target a dedicated 15 A circuit because the oven core can approach 1800 W.'],
+  ['Power', '120 V grounded outlet; target a dedicated 15 A circuit for the bake module plus low-voltage control power.'],
   ['Water', '1/4 in refrigerator-style line, inline shutoff, filter, normally closed valve, leak tray, and leak sensor.'],
-  ['Dry ingredients', '2.5-3 kg flour hopper, small salt capsule, sealed lids, agitator, and load-cell verification.'],
-  ['Starter', 'Customer keeps one starter pod installed; the machine feeds it and routes discard to a removable cup.'],
-  ['Cleaning', 'Dishwasher-safe dough cartridge plus daily low-water rinse; no hidden food-contact cavities.'],
-  ['Connectivity', 'Local controls work offline; app handles schedule, alerts, maintenance, and recipe tuning.']
+  ['Dry ingredients', '2.5-3 kg flour hopper, salt capsule, sealed lids, agitator, and load-cell verification.'],
+  ['Starter', 'Starter pod gets heated, stirred, and weighed; discard routes to a removable cup.'],
+  ['Cleaning', 'Dishwasher-safe food-contact parts plus daily low-water rinse; no hidden flour cavities.'],
+  ['Connectivity', 'ESP32 handles real-time control; Raspberry Pi handles UI, recipes, telemetry, and logs.']
 ];
 
 const phaseOneRoadmap = [
-  ['Bench Alpha', 'Prove flour dosing, water dosing, starter maintenance, and one-bowl mixing with real dough.'],
-  ['EVT', 'Build 5-10 enclosed units with leak detection, interlocks, repeatable bake profiles, and swappable cartridges.'],
-  ['DVT', 'Run 30-day home abuse tests: flour bridging, crust outcomes, cleaning burden, water leaks, and overheating.'],
-  ['Pilot', 'Place 20 units with friendly users; measure actual customer touch time, failed loaves, support tickets, and retention.']
+  ['Bench Alpha', 'Prove starter heat control, stirring, load-cell dosing, and dough transfer with real dough.'],
+  ['EVT', 'Build 5-10 enclosed units with leak detection, interlocks, proof vessel control, and swappable food parts.'],
+  ['DVT', 'Run 30-day abuse tests: flour bridging, starter stability, proof consistency, bake quality, and cleanup burden.'],
+  ['Pilot', 'Place 20 units with friendly users; measure touch time, failed loaves, support tickets, and storage fit.']
 ];
 
 const phaseOneReferences = [
-  ['Breville BOV860 reference', '18.9 x 15.9 x 10.9 in, $349.95 reference countertop oven class.'],
-  ['mechArm Pi reference', '6-axis, 250 g payload, 270 mm reach; useful for demos but too limited for shipped dough handling.'],
-  ['NSF/ANSI food equipment direction', 'Design around material safety, cleanability, sanitation, construction, and performance.'],
-  ['UL 1026 direction', 'Household electric cooking appliances rated 250 V or less are in the relevant safety family.']
+  ['ESP32 / Raspberry Pi split', 'ESP32 for hard real-time and safety; Raspberry Pi for coordination, UI, and telemetry.'],
+  ['Food equipment direction', 'Design around material safety, cleanability, sanitation, construction, and performance.'],
+  ['Countertop heating class', 'Treat the bake module like a real heated appliance, with interlocks and thermal protection.'],
+  ['Open-source advantage', 'Separate control, sensing, and mechanical subsystems so people can replace pieces without redesigning the whole machine.']
+];
+
+const phaseOneOpenSourceModules = [
+  ['Control', 'ESP32 board, SSRs, temp sensors, door switches, leak detection, watchdog.'],
+  ['Coordinator', 'Raspberry Pi running the recipe UI, scheduling, logging, and remote access.'],
+  ['Starter', 'Heated chamber, stir motor, load cell, feed hopper, discard cup.'],
+  ['Proof', 'Temperature / humidity controlled vessel sized for dense dough batches.'],
+  ['Transfer', 'Dock or conveyor path from starter to proof to shape to bake to rest.'],
+  ['Bake', 'Compact oven-like chamber with interlocks and ready / done signals.'],
+  ['Rest', 'Ventilated post-bake staging so multiple units can accumulate safely.']
+];
+
+const phaseOneArchitectureRows = [
+  ['1. Starter', 'Keep culture warm, stirred, and measured so the next batch is predictable.'],
+  ['2. Proof', 'Move starter and dough into a controlled vessel with the right feed amounts.'],
+  ['3. Shape', 'Use hook / fold / transfer motion to form dough or move it into a pan.'],
+  ['4. Bake', 'Load the heated chamber, run the bake, and tell the user when it is ready.'],
+  ['5. Rest', 'Hold finished units in a ventilated zone so space-sensitive runs can stack safely.']
 ];
 
 const pages = ['overview', 'model', 'automation', 'cookies', 'home', 'phase-one', 'pan-bread'];
@@ -1477,12 +1513,20 @@ function CookieScene({ model }) {
 
 function PhaseOneHomeProduct() {
   const bomTotal = phaseOneCostRows.reduce((sum, [, qty, unit]) => sum + qty * unit, 0);
+  const retailTotal = phaseOneRetailCostRows.reduce((sum, [, qty, unit]) => sum + qty * unit, 0);
+  const denseModel = [
+    ['1', 'Starter', 'Heated, stirred, and load-cell monitored starter pod.'],
+    ['2', 'Proof', 'Covered proof vessel with controlled temperature / humidity.'],
+    ['3', 'Shape', 'Dough hook, taffy-style folding, or gentle transfer into a pan.'],
+    ['4', 'Bake', 'Microwave-oven-like heated chamber with user-ready notifications.'],
+    ['5', 'Rest', 'Post-bake rest zone so multiple units can cool without evacuation.']
+  ];
   const customerSteps = [
-    'Fill the flour hopper about once a week.',
+    'Fill the flour and salt hoppers about once a week.',
     'Keep the starter pod installed; empty the discard cup when prompted.',
     'Attach the water line or use a fallback tank during early pilots.',
-    'Remove the dough cartridge and crumb tray for dishwasher cleaning.',
-    'Pick a bake schedule and pull the finished loaf after cool hold.'
+    'Remove the food-contact parts for dishwasher cleaning.',
+    'Confirm the schedule and pull the loaf after the done alert.'
   ];
   const dontShip = [
     'No exposed hobby arm doing hot oven-door work in the first sellable unit.',
@@ -1496,8 +1540,8 @@ function PhaseOneHomeProduct() {
     <section className="page phaseOnePage">
       <div className="pageHead">
         <p className="eyebrow">Phase 1 home product</p>
-        <h1>The first sellable Daily Home Bread should be a closed countertop bread cell.</h1>
-        <p>My recommendation is not to ship a general-purpose robot arm first. Ship a simpler appliance: sealed dry hoppers, water-line dosing, a maintained starter pod, a removable dough cartridge, a proof/bake module, and a rinse dock. It is less flashy, but it is far more likely to be safe, cleanable, supportable, and repeatable in real homes.</p>
+        <h1>The first sellable Daily Home Bread should be an open-source appliance stack built around ESP32 + Raspberry Pi.</h1>
+        <p>My recommendation is not to ship a general-purpose robot arm first. Ship a simpler appliance stack: a starter sidekick that heats, stirs, and weighs the culture; a proof vessel with the right feed amounts; a shaping / transfer path; a compact bake module; and a post-bake rest zone. It is more realistic for dense, space-sensitive homes and easier for an open-source community to reproduce.</p>
       </div>
 
       <div className="pitchStrip">
@@ -1506,18 +1550,27 @@ function PhaseOneHomeProduct() {
         ))}
       </div>
 
+      <section className="band">
+        <h2>Five-station architecture for a dense footprint</h2>
+        <div className="grid3">
+          {denseModel.map(([index, title, text]) => (
+            <Feature key={title} icon={Box} title={`${index}. ${title}`} text={text} />
+          ))}
+        </div>
+      </section>
+
       <section className="workflowShowcase phaseOneShowcase">
         <div className="workflowHeader">
           <div>
             <p className="eyebrow">Recommended MVP architecture</p>
-            <h2>Fixed appliance mechanisms first; robotics as a later premium layer.</h2>
+            <h2>Starter, proof, shape, bake, rest. The robot part is transfer logic and scheduling, not a humanoid arm.</h2>
             <div className="ingredientLegend">
               {[
-                ['Water line', 'H2O', '#8fb3c7'],
-                ['Flour hopper', 'F', '#efe3bf'],
+                ['ESP32 control', 'MCU', '#8fb3c7'],
+                ['Raspberry Pi', 'UI', '#efe3bf'],
                 ['Starter pod', 'S', '#d0a85c'],
-                ['Heat chamber', '450F', '#f0a33c'],
-                ['Rinse dock', 'CIP', '#dfead1']
+                ['Bake chamber', 'HEAT', '#f0a33c'],
+                ['Post-bake rest', 'REST', '#dfead1']
               ].map(([label, short, color]) => (
                 <span key={label}>
                   <b style={{ background: color }}>{short}</b>
@@ -1528,22 +1581,31 @@ function PhaseOneHomeProduct() {
           </div>
           <div className="phaseOneVerdict">
             <b>Best Phase 1</b>
-            <span>One excellent loaf per day, reliably.</span>
+            <span>Open-source, space-aware, multi-stage bread automation.</span>
           </div>
         </div>
         <PhaseOneScene />
       </section>
 
+      <section className="band">
+        <h2>Architecture at a glance</h2>
+        <div className="grid3">
+          {phaseOneArchitectureRows.map(([label, text]) => (
+            <Feature key={label} icon={Layers3} title={label} text={text} />
+          ))}
+        </div>
+      </section>
+
       <div className="phaseOneLayout">
         <Panel title="Product Stance">
           <div className="phaseOneStatement">
-            <strong>Build the appliance around food-safe repeatability, not around a cool robot.</strong>
-            <p>A sellable home unit should dose ingredients by weight, keep the messy dough inside a removable cartridge, use interlocked heat, and make cleaning obvious. The customer buys fresh bread with low effort, not a science project on their counter.</p>
+            <strong>Build the appliance around food-safe repeatability and open repairability, not around a cool robot.</strong>
+            <p>A sellable home unit should dose ingredients by weight, keep the messy dough inside removable modules, use interlocked heat, and make cleaning obvious. The customer buys fresh bread with low effort, while the open-source design keeps the control stack understandable and modifiable.</p>
           </div>
           <div className="phaseOnePrinciples">
             <Feature icon={PackageCheck} title="Closed Food Path" text="Flour, salt, starter, water, dough, and rinse water stay inside sealed or removable modules." />
             <Feature icon={Waves} title="Water-Line Ready" text="Use a 1/4 in line, shutoff, filter, flow meter, solenoid valve, leak tray, and tank fallback for pilots." />
-            <Feature icon={RotateCcw} title="Serviceable Core" text="The dough cartridge, starter cup, crumb tray, and rinse tray come out without tools." />
+            <Feature icon={RotateCcw} title="Serviceable Core" text="The starter cup, proof vessel, transfer tray, and rest tray come out without tools." />
           </div>
         </Panel>
 
@@ -1553,7 +1615,7 @@ function PhaseOneHomeProduct() {
               <li key={item}>{item}</li>
             ))}
           </ul>
-          <p className="note">The customer should not measure flour, feed starter by hand, touch raw dough, or clean inside a hidden machine cavity. The job is refill, empty, and approve the schedule.</p>
+          <p className="note">The customer should not measure flour, feed starter by hand, touch raw dough, or clean inside a hidden machine cavity. The job is refill, empty, and approve the schedule. If the user needs to do more than load a pan, the design is probably too manual.</p>
         </Panel>
 
         <Panel title="Automated Daily Cycle">
@@ -1585,13 +1647,24 @@ function PhaseOneHomeProduct() {
 
         <Panel title="Phase 1 BOM and Pricing Logic">
           <div className="kpiRow">
-            <Metric label="Pilot BOM" value={formatMoney(bomTotal)} />
-            <Metric label="Retail target" value="$3.5k-$4.5k" />
+            <Metric label="Prototype BOM" value={formatMoney(bomTotal)} />
+            <Metric label="Retail BOM" value={formatMoney(retailTotal)} />
+            <Metric label="Prototype target" value="$2.4k-$3.5k" />
+            <Metric label="Retail target" value="$4.5k-$5.5k" />
             <Metric label="Warranty reserve" value="10%-15%" />
-            <Metric label="First output" value="Unsliced loaf" />
+            <Metric label="First output" value="Pan-ready loaf" />
           </div>
-          <PurchaseTable title="Sellable Prototype Allowance" rows={phaseOneCostRows} />
-          <p className="note">These numbers are planning allowances, not supplier quotes. The main thesis is that a fixed-mechanism appliance can land below the cost and risk of a robot-arm-first product.</p>
+          <div className="splitCost">
+            <div>
+              <h3>Prototype build</h3>
+              <PurchaseTable title="Open-source prototype allowance" rows={phaseOneCostRows} />
+            </div>
+            <div>
+              <h3>Retail build</h3>
+              <PurchaseTable title="Higher-reliability retail allowance" rows={phaseOneRetailCostRows} />
+            </div>
+          </div>
+          <p className="note">These numbers are planning allowances, not supplier quotes. The main thesis is that an ESP32 + Raspberry Pi appliance stack can be built in a prototype form first, then hardened into a retail version without redesigning the whole control model.</p>
         </Panel>
 
         <Panel title="Do Not Ship in Phase 1">
@@ -1626,6 +1699,20 @@ function PhaseOneHomeProduct() {
             </tbody>
           </table>
           <p className="note">For a real product, the certification plan needs a qualified test lab and counsel. The page uses public reference points to shape the product direction: countertop cooking appliance safety, food-contact material safety, cleanability, and leak/thermal interlocks.</p>
+        </Panel>
+
+        <Panel title="Open-Source Module Map">
+          <table>
+            <tbody>
+              {phaseOneOpenSourceModules.map(([name, detail]) => (
+                <tr key={name}>
+                  <th>{name}</th>
+                  <td>{detail}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="note">This is the minimum architecture that feels open-source without becoming a fragile science fair project.</p>
         </Panel>
       </div>
     </section>

@@ -638,6 +638,13 @@ td:last-child {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 }
 
+.splitCost {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 16px 0;
+}
+
 .phaseOneLayout > * {
   min-width: 0;
 }
@@ -967,7 +974,8 @@ footer {
   .workflowHeader,
   .phaseOneLayout,
   .phaseOnePrinciples,
-  .phaseRoadmap {
+  .phaseRoadmap,
+  .splitCost {
     grid-template-columns: 1fr;
   }
 
