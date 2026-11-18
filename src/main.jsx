@@ -4656,6 +4656,7 @@ function Footer() {
     <footer>
       <b>DailyBread Pilot</b>
       <span>Concept model for planning only. Validate with local code, health department, fire, electrical, and food safety requirements before purchasing equipment.</span>
+      <a href="https://techmore.github.io/">Part of Techmore</a>
     </footer>
   );
 }
